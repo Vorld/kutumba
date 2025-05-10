@@ -10,7 +10,6 @@ import {
   useEdgesState,
   addEdge,
   Edge as RFEdge,
-  NodeMouseHandler,
   MarkerType,
   EdgeMarker,
   ConnectionLineType,
@@ -24,7 +23,7 @@ import '@xyflow/react/dist/style.css';
 import Fuse from 'fuse.js';
 
 import CustomNode from './CustomNode'; 
-import { transformDataForReactFlow, Relationship, FamilyTreeCustomNode } from '@/lib/utils'; // Removed FamilyTreeNodeData import
+import { Relationship, FamilyTreeCustomNode } from '@/lib/utils'; 
 import type { Person } from '@/types';
 
 const nodeTypes: NodeTypes = {
@@ -136,98 +135,6 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
     fetchDataAndSetFlow();
   }, [fetchDataAndSetFlow]);
 
-  const onNodeClick: NodeMouseHandler<FamilyTreeCustomNode> = useCallback(async (_event, node) => {
-    if (isLoading) return;
-    setIsLoading(true);
-    try {
-      const clickedPersonId = node.id;
-      const relationshipsResponse = await fetch(`/api/relationships/${clickedPersonId}`);
-      if (!relationshipsResponse.ok) {
-        console.error(`Failed to fetch relationships for ${clickedPersonId}:`, relationshipsResponse.statusText);
-        setIsLoading(false); return;
-      }
-      const relationships: Relationship[] = await relationshipsResponse.json();
-      
-      const existingNodeIds = new Set(nodes.map(n => n.id));
-      const newPersonIdsToFetch = new Set<string>();
-
-      relationships.forEach(rel => {
-        const relatedPersonId = rel.person1_id === clickedPersonId ? rel.person2_id : rel.person1_id;
-        if (!existingNodeIds.has(relatedPersonId)) {
-          newPersonIdsToFetch.add(relatedPersonId);
-        }
-      });
-
-      const newNodes: FamilyTreeCustomNode[] = [];
-      const newEdges: RFEdge[] = []; // Raw edges
-
-      for (const personIdToFetch of newPersonIdsToFetch) {
-        const personResponse = await fetch(`/api/person/${personIdToFetch}`);
-        if (!personResponse.ok) {
-          console.warn(`Failed to fetch person ${personIdToFetch}:`, personResponse.statusText); continue;
-        }
-        const personData: Person = await personResponse.json();
-        
-        const newPersonRelationshipsResponse = await fetch(`/api/relationships/${personIdToFetch}`);
-        let newPersonRelationships: Relationship[] = [];
-        if (newPersonRelationshipsResponse.ok) {
-          newPersonRelationships = await newPersonRelationshipsResponse.json();
-        } else {
-          console.warn(`Failed to fetch relationships for ${personIdToFetch}:`, newPersonRelationshipsResponse.statusText);
-        }
-        
-        if (personData) {
-          // Get nodes and edges from transformDataForReactFlow
-          const { nodes: transformedNodes, edges: transformedEdges } = transformDataForReactFlow(personData, newPersonRelationships);
-          // Add new node if it doesn't exist
-          transformedNodes.forEach(tn => {
-            if (!existingNodeIds.has(tn.id) && !newNodes.some(nn => nn.id === tn.id)) {
-              newNodes.push(tn);
-            }
-          });
-          newEdges.push(...transformedEdges);
-        }
-      }
-
-      setNodes(nds => {
-        const currentNodes = new Set(nds.map(n => n.id));
-        const nodesToAdd = newNodes.filter(n => !currentNodes.has(n.id));
-        return [...nds, ...nodesToAdd];
-      });
-
-      setEdges(eds => {
-        const existingEdgeIds = new Set(eds.map(e => e.id));
-        const uniqueNewStyledEdges = newEdges
-          .filter(newEdge => !existingEdgeIds.has(newEdge.id))
-          .map(edge => {
-            const baseMarker: EdgeMarker = { type: MarkerType.ArrowClosed };
-            let edgeStyle = {};
-            let finalMarker: EdgeMarker | undefined = baseMarker;
-            switch (edge.label) {
-              case 'spouse': 
-                edgeStyle = { stroke: '#555', strokeWidth: 2 }; 
-                finalMarker = undefined;
-                break;
-              case 'child': 
-              case 'parent': 
-                edgeStyle = { stroke: '#2a9d8f', strokeWidth: 2 }; 
-                finalMarker = { ...baseMarker, color: '#2a9d8f' }; 
-                break;
-              default: 
-                edgeStyle = { stroke: '#ccc', strokeWidth: 1 };
-            }
-            return { ...edge, style: edgeStyle, markerEnd: finalMarker };
-          });
-        return [...eds, ...uniqueNewStyledEdges];
-      });
-
-    } catch (error) {
-      console.error(`Error expanding node ${node.id}:`, error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [nodes, isLoading, setNodes, setEdges]); 
-
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, type: ConnectionLineType.SmoothStep, animated: true }, eds)),
     [setEdges],
@@ -299,7 +206,6 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeClick={onNodeClick}
         onNodeDragStop={onNodeDragStop}
         nodeTypes={nodeTypes}
         fitView
