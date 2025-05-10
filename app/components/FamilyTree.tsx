@@ -90,30 +90,56 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
       }));
 
       const reactFlowEdges: RFEdge[] = allRelationshipsData.map(rel => {
-        const baseMarker: EdgeMarker = { type: MarkerType.ArrowClosed };
+        const baseMarkerColor = '#2a9d8f';
+        const baseMarker: EdgeMarker = { type: MarkerType.ArrowClosed, color: baseMarkerColor };
         let edgeStyle = {};
         let finalMarker: EdgeMarker | undefined = baseMarker;
+        let sourceId = rel.person1_id;
+        let targetId = rel.person2_id;
+        let edgeLabel: string = rel.relationship_type;
+        let sHandle: string | undefined = undefined;
+        let tHandle: string | undefined = undefined;
 
         switch (rel.relationship_type) {
           case 'spouse':
             edgeStyle = { stroke: '#555', strokeWidth: 2 };
-            finalMarker = undefined;
+            finalMarker = undefined; // No arrow for spouses
+            sHandle = 'spouseOutputRight'; 
+            tHandle = 'spouseInputLeft';
+            // edgeLabel remains 'spouse'
             break;
-          case 'child':
-          case 'parent':
-            edgeStyle = { stroke: '#2a9d8f', strokeWidth: 2 };
-            finalMarker = { ...baseMarker, color: '#2a9d8f' };
+          case 'child': // API means: rel.person1_id is CHILD, rel.person2_id is PARENT
+            sourceId = rel.person2_id; // Parent
+            targetId = rel.person1_id; // Child
+            edgeStyle = { stroke: baseMarkerColor, strokeWidth: 2 };
+            finalMarker = { ...baseMarker };
+            sHandle = 'childOutput';    // From parent's bottom
+            tHandle = 'parentInput';    // To child's top
+            edgeLabel = 'is parent of';
             break;
-          default:
+          case 'parent': // API means: rel.person1_id is PARENT, rel.person2_id is CHILD
+            sourceId = rel.person1_id; // Parent
+            targetId = rel.person2_id; // Child
+            edgeStyle = { stroke: baseMarkerColor, strokeWidth: 2 };
+            finalMarker = { ...baseMarker };
+            sHandle = 'childOutput';    // From parent's bottom
+            tHandle = 'parentInput';    // To child's top
+            edgeLabel = 'is parent of';
+            break;
+          default: // Unknown relationship types
             edgeStyle = { stroke: '#ccc', strokeWidth: 1 };
+            finalMarker = { type: MarkerType.ArrowClosed, color: '#ccc' };
+            // Default handles will be used if sHandle/tHandle remain undefined
         }
         return {
           id: `e-${rel.id}`,
-          source: rel.person1_id,
-          target: rel.person2_id,
-          label: rel.relationship_type,
+          source: sourceId,
+          target: targetId,
+          label: edgeLabel,
           style: edgeStyle,
           markerEnd: finalMarker,
+          sourceHandle: sHandle,
+          targetHandle: tHandle,
         };
       });
 
