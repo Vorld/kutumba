@@ -74,7 +74,6 @@ function LoginForm() {
             />
           </div>
           
-          {/* Optional fields */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-stone-300 mb-1">
               Your Name (Optional)
@@ -101,11 +100,11 @@ function LoginForm() {
               value={formData.phone}
               onChange={handleChange}
               className="w-full px-4 py-2 border border-stone-600 rounded-md bg-stone-700 text-white focus:outline-none focus:ring-2 focus:ring-stone-500 placeholder-stone-400"
-              placeholder="+1 123-456-7890"
+              placeholder="+91 12345 67890"
               pattern="^\+[0-9\s\-()]{5,20}$"
             />
             <p className="text-xs text-stone-400 mt-1">
-              Include country code (e.g., +1 for USA). I&apos;ll only use this to notify you if the family password changes.
+              Include country code (e.g., +91 for India). I&apos;ll only use this to notify you if the family password changes.
             </p>
           </div>
           

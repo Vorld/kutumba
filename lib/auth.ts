@@ -75,6 +75,7 @@ export async function createJWT(userInfo: string = 'Anonymous', expiryDays: numb
     let phone = null;
     
     // Check if userInfo is in the format "Name (phone)"
+    // TODO: Better validation for phone number (different countries, etc.)
     const namePhoneMatch = userInfo.match(/^(.+?) \((\+[0-9\s\-()]+)\)$/);
     if (namePhoneMatch) {
       name = namePhoneMatch[1];
