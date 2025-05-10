@@ -13,6 +13,31 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    
+    // Validate and normalize phone number if provided
+    let normalizedPhone = null;
+    if (phone) {
+      // Basic phone number validation - should start with + for country code
+      const phoneRegex = /^\+[0-9\s\-()]{5,20}$/;
+      if (!phoneRegex.test(phone)) {
+        return NextResponse.json(
+          { message: 'Invalid phone number format. Please include country code (e.g., +1 555-123-4567)' },
+          { status: 400 }
+        );
+      }
+      
+      // Normalize to E.164 format (remove all non-digit characters except the leading +)
+      normalizedPhone = phone.replace(/[^+0-9]/g, '');
+      
+      // Validate that the normalized number conforms to E.164 (+ followed by 7-15 digits)
+      const e164Regex = /^\+[1-9][0-9]{1,14}$/;
+      if (!e164Regex.test(normalizedPhone)) {
+        return NextResponse.json(
+          { message: 'Invalid phone number. Please check the country code and number.' },
+          { status: 400 }
+        );
+      }
+    }
 
     // Get the current password from the database
     const results = await sql`SELECT password_hash FROM shared_password WHERE id = 1`;
@@ -55,7 +80,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Create user info string and JWT token
-    const userInfo = name ? name : (phone ? phone : 'Anonymous user');
+    const displayName = name || 'Anonymous user';
+    const userInfo = phone ? `${displayName} (${normalizedPhone})` : displayName;
     const authToken = await createJWT(userInfo, 7); // 7 days session
     
     // Create a response with the success message

@@ -101,10 +101,11 @@ function LoginForm() {
               value={formData.phone}
               onChange={handleChange}
               className="w-full px-4 py-2 border border-stone-600 rounded-md bg-stone-700 text-white focus:outline-none focus:ring-2 focus:ring-stone-500 placeholder-stone-400"
-              placeholder="For password change notifications"
+              placeholder="+1 123-456-7890"
+              pattern="^\+[0-9\s\-()]{5,20}$"
             />
             <p className="text-xs text-stone-400 mt-1">
-              I&apos;ll only use this to notify you if the family password changes.
+              Include country code (e.g., +1 for USA). I&apos;ll only use this to notify you if the family password changes.
             </p>
           </div>
           

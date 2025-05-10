@@ -43,7 +43,10 @@ export function getSecretKey(): Uint8Array {
 
 /**
  * Create a JWT token for the user
- * @param userInfo Optional information about the user
+ * @param userInfo Optional information about the user. Can be:
+ *                 - A simple name (e.g., "John Doe")
+ *                 - A formatted string with name and phone ("John Doe (+1234567890)")
+ *                 - Just a phone number ("+1234567890")
  * @param expiryDays Number of days until the token expires
  * @returns The JWT token as string
  */
@@ -68,10 +71,51 @@ export async function createJWT(userInfo: string = 'Anonymous', expiryDays: numb
   
   // Log user authentication for audit purposes
   try {
-    await sql`
-      INSERT INTO users (name, login_time)
-      VALUES (${userInfo}, NOW())
-    `;
+    let name = userInfo;
+    let phone = null;
+    
+    // Check if userInfo is in the format "Name (phone)"
+    const namePhoneMatch = userInfo.match(/^(.+?) \((\+[0-9\s\-()]+)\)$/);
+    if (namePhoneMatch) {
+      name = namePhoneMatch[1];
+      phone = namePhoneMatch[2].replace(/[^+0-9]/g, ''); // Normalize phone format
+    } else {
+      // Check if userInfo is just a phone number
+      const phoneRegex = /^\+?[0-9\s\-()]+$/;
+      if (phoneRegex.test(userInfo)) {
+        phone = userInfo.replace(/[^+0-9]/g, ''); // Normalize phone format
+        name = 'Anonymous';
+      }
+    }
+    
+    // If we have a phone number, check if it already exists before inserting
+    if (phone) {
+      // Check if this phone number already exists
+      const existingUser = await sql`
+        SELECT id FROM users WHERE phone = ${phone} LIMIT 1
+      `;
+      
+      if (existingUser && existingUser.length > 0) {
+        // Update the existing record instead of creating a new one
+        await sql`
+          UPDATE users 
+          SET name = ${name}, login_time = NOW()
+          WHERE phone = ${phone}
+        `;
+      } else {
+        // Insert new record
+        await sql`
+          INSERT INTO users (name, phone, login_time)
+          VALUES (${name}, ${phone}, NOW())
+        `;
+      }
+    } else {
+      // No phone number, just log the login with name
+      await sql`
+        INSERT INTO users (name, login_time)
+        VALUES (${name}, NOW())
+      `;
+    }
   } catch (error) {
     // Log but don't fail if this fails
     console.error('Failed to log user authentication:', error);
@@ -80,11 +124,6 @@ export async function createJWT(userInfo: string = 'Anonymous', expiryDays: numb
   return jwt;
 }
 
-/**
- * Alias for createJWT to maintain backward compatibility
- * @deprecated Use createJWT instead
- */
-export const createSession = createJWT;
 
 /**
  * Verify if a JWT token is valid
@@ -103,9 +142,3 @@ export async function verifyToken(token: string): Promise<{ valid: boolean; payl
     return { valid: false };
   }
 }
-
-/**
- * Alias for verifyToken to maintain backward compatibility
- * @deprecated Use verifyToken instead
- */
-export const verifySession = verifyToken;
