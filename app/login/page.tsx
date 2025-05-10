@@ -40,7 +40,7 @@ export default function Login() {
         setError(data.message || 'Invalid password');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError('An error occurred: ' + err + '. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -52,13 +52,13 @@ export default function Login() {
   };
   
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-gray-50">
-      <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">Kutumba Tree</h1>
+    <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-stone-900">
+      <div className="w-full max-w-md p-6 bg-stone-800 rounded-lg shadow-xl border border-stone-700">
+        <h1 className="text-2xl font-bold mb-6 text-center text-stone-100">Kutumba</h1>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-stone-300 mb-1">
               Shared Password
             </label>
             <input
@@ -68,14 +68,14 @@ export default function Login() {
               required
               value={formData.password}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-stone-600 rounded-md bg-stone-700 text-white focus:outline-none focus:ring-2 focus:ring-stone-500 placeholder-stone-400"
               placeholder="Enter the family password"
             />
           </div>
           
           {/* Optional fields */}
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="name" className="block text-sm font-medium text-stone-300 mb-1">
               Your Name (Optional)
             </label>
             <input
@@ -84,13 +84,13 @@ export default function Login() {
               name="name"
               value={formData.name}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-stone-600 rounded-md bg-stone-700 text-white focus:outline-none focus:ring-2 focus:ring-stone-500 placeholder-stone-400"
               placeholder="Enter your name"
             />
           </div>
           
           <div>
-            <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="phone" className="block text-sm font-medium text-stone-300 mb-1">
               Phone Number (Optional)
             </label>
             <input
@@ -99,16 +99,16 @@ export default function Login() {
               name="phone"
               value={formData.phone}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-stone-600 rounded-md bg-stone-700 text-white focus:outline-none focus:ring-2 focus:ring-stone-500 placeholder-stone-400"
               placeholder="For password change notifications"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              We&apos;ll only use this to notify you if the family password changes.
+            <p className="text-xs text-stone-400 mt-1">
+              I&apos;ll only use this to notify you if the family password changes.
             </p>
           </div>
           
           {error && (
-            <div className="bg-red-50 border border-red-400 text-red-700 px-4 py-3 rounded">
+            <div className="bg-red-900/30 border border-red-700 text-red-300 px-4 py-3 rounded">
               {error}
             </div>
           )}
@@ -116,7 +116,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={isLoading || !formData.password}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-blue-300"
+            className="w-full bg-stone-600 hover:bg-stone-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2 focus:ring-offset-stone-800 disabled:bg-stone-500 disabled:text-stone-300"
           >
             {isLoading ? 'Loading...' : 'Log In'}
           </button>
