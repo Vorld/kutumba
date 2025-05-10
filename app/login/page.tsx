@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { LoginFormData } from '@/types';
 
-export default function Login() {
+// Component that uses useSearchParams must be wrapped in Suspense
+function LoginForm() {
   const [formData, setFormData] = useState<LoginFormData>({
     password: '',
     name: '',
@@ -123,5 +124,28 @@ export default function Login() {
         </form>
       </div>
     </div>
+  );
+}
+
+// Loading fallback component for the Suspense boundary
+function LoginFormFallback() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-stone-900">
+      <div className="w-full max-w-md p-6 bg-stone-800 rounded-lg shadow-xl border border-stone-700">
+        <h1 className="text-2xl font-bold mb-6 text-center text-stone-100">Kutumba</h1>
+        <div className="flex justify-center">
+          <div className="animate-pulse text-stone-300">Loading...</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Main component that wraps the LoginForm in a Suspense boundary
+export default function Login() {
+  return (
+    <Suspense fallback={<LoginFormFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }
