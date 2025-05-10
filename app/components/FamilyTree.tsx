@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, ChangeEvent, useMemo, MouseEvent as ReactMouseEvent } from 'react';
+import React, { useEffect, useState, useCallback, ChangeEvent, useMemo } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -17,17 +17,56 @@ import {
   useReactFlow,
   ReactFlowProvider,
   NodeTypes,
-  OnNodeDrag, 
+  Position,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import Fuse from 'fuse.js';
+import dagre from 'dagre';
 
-import CustomNode from './CustomNode'; 
-import { Relationship, FamilyTreeCustomNode } from '@/lib/utils'; 
+import CustomNode from './CustomNode';
+import { Relationship, FamilyTreeCustomNode } from '@/lib/utils';
 import type { Person } from '@/types';
 
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
+};
+
+// Dagre layout function
+const getLayoutedElements = (nodes: FamilyTreeCustomNode[], edges: RFEdge[], direction = 'TB') => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({})); // Default for edges passed to Dagre
+  dagreGraph.setGraph({ rankdir: direction, nodesep: 100, ranksep: 120 }); // Adjusted ranksep for more space
+
+  nodes.forEach((node) => {
+    // Ensure node dimensions are considered. These are estimates; might need adjustment.
+    // Or, get actual dimensions if CustomNode renders with fixed size or after first render.
+    const nodeWidth = 150; // Approximate width of CustomNode
+    const nodeHeight = 100; // Approximate height of CustomNode
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+  });
+
+  // ONLY add hierarchical (parent-child) edges to Dagre for layout calculation.
+  // Spouse edges are in the 'edges' array for React Flow to render but are not used by Dagre for ranking here.
+  edges.forEach((edge) => {
+    if (edge.label === 'is parent of') {
+      dagreGraph.setEdge(edge.source, edge.target);
+    }
+  });
+
+  dagre.layout(dagreGraph);
+
+  return nodes.map((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    return {
+      ...node,
+      targetPosition: Position.Top, // For dagre layout, good to specify
+      sourcePosition: Position.Bottom, // For dagre layout
+      position: {
+        x: nodeWithPosition.x - nodeWithPosition.width / 2,
+        y: nodeWithPosition.y - nodeWithPosition.height / 2,
+      },
+    };
+  });
 };
 
 interface FamilyTreeProps {
@@ -82,14 +121,14 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
         return;
       }
 
-      const reactFlowNodes: FamilyTreeCustomNode[] = allPersonsData.map(person => ({
+      const initialNodes: FamilyTreeCustomNode[] = allPersonsData.map(person => ({
         id: person.id,
         type: 'custom',
         data: { ...person, label: person.name || person.id },
-        position: { x: Math.random() * 1200, y: Math.random() * 800 }, // Spread them out a bit more
+        position: { x: 0, y: 0 }, // Initial position, dagre will overwrite
       }));
 
-      const reactFlowEdges: RFEdge[] = allRelationshipsData.map(rel => {
+      const initialEdges: RFEdge[] = allRelationshipsData.map(rel => {
         const baseMarkerColor = '#2a9d8f';
         const baseMarker: EdgeMarker = { type: MarkerType.ArrowClosed, color: baseMarkerColor };
         let edgeStyle = {};
@@ -143,8 +182,10 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
         };
       });
 
-      setNodes(reactFlowNodes);
-      setEdges(reactFlowEdges);
+      // Apply Dagre layout
+      const layoutedNodes = getLayoutedElements(initialNodes, initialEdges);
+      setNodes(layoutedNodes);
+      setEdges(initialEdges);
 
     } catch (error) {
       console.error('Error fetching initial data for the entire tree:', error);
@@ -165,16 +206,6 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
     (params) => setEdges((eds) => addEdge({ ...params, type: ConnectionLineType.SmoothStep, animated: true }, eds)),
     [setEdges],
   );
-
-  // Correctly type onNodeDragStop and remove unused _nodesSnapshot
-  const onNodeDragStop: OnNodeDrag<FamilyTreeCustomNode> = useCallback((_event: ReactMouseEvent, node: FamilyTreeCustomNode) => {
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.id === node.id ? { ...n, position: node.position } : n
-      )
-    );
-    console.log('Node dragged and stopped:', node.id, node.position);
-  }, [setNodes]);
 
   const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
@@ -232,7 +263,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeDragStop={onNodeDragStop}
+        nodesDraggable={false}
         nodeTypes={nodeTypes}
         fitView
         zoomOnScroll

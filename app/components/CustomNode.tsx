@@ -32,8 +32,6 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
           Born: {new Date(birthday).toLocaleDateString()}
         </div>
       )}
-      {/* Remove generic bottom handle if specific ones are used elsewhere or adjust logic */}
-      {/* <Handle type="source" position={Position.Bottom} isConnectable={isConnectable} /> */}
     </div>
   );
 };
