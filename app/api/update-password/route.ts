@@ -40,19 +40,19 @@ export async function POST(request: NextRequest) {
       WHERE id = 1
     `;
     
-    // For security reasons, invalidate ALL sessions when admin resets the password
-    try {
-      await sql`DELETE FROM sessions`;
-      console.log('Invalidated all sessions after admin password reset');
-    } catch (error) {
-      console.error('Failed to invalidate sessions after admin password reset:', error);
-    }
+    // With JWT-based auth, we don't need to delete sessions from a database
+    // Users will continue to have access until their tokens expire
+    // If you need immediate invalidation, you would need to implement a token blacklist
+    // or consider updating the JWT signing secret, which would invalidate all tokens
     
-    return NextResponse.json({ message: 'Password updated successfully via admin reset' });
+    return NextResponse.json({ 
+      message: 'Password updated successfully via admin reset',
+      note: 'With JWT-based auth, existing sessions will remain valid until they expire'
+    });
   } catch (error) {
-    console.error('Error updating password:', error);
+    console.error('Password update error:', error);
     return NextResponse.json(
-      { message: 'An error occurred while updating the password' },
+      { message: 'An error occurred during password update' },
       { status: 500 }
     );
   }

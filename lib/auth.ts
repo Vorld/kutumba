@@ -1,6 +1,7 @@
 // Helper functions for password hashing and verification
 import bcryptjs from 'bcryptjs';
 import { sql } from './db';
+import * as jose from 'jose';
 
 const SALT_ROUNDS = 10;
 
@@ -24,91 +25,87 @@ export async function verifyPassword(plainTextPassword: string, hashedPassword: 
 }
 
 /**
- * Generate a secure authentication token
- * @returns A secure random token
+ * Get the secret key for JWT operations
+ * @returns The secret key as Uint8Array
  */
-export function generateAuthToken(): string {
-  // Create a new array to store random bytes
-  const array = new Uint8Array(32);
+export function getSecretKey(): Uint8Array {
+  // Get the JWT secret from environment variables
+  const envSecret = process.env.JWT_SECRET;
   
-  // Fill the array with cryptographically secure random values
-  crypto.getRandomValues(array);
+  // Check if JWT_SECRET is set
+  if (!envSecret) {
+    throw new Error('JWT_SECRET environment variable is not set. Please check your .env file.');
+  }
   
-  // Convert the array to a hex string
-  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+  // Convert the secret to a Uint8Array for use with jose
+  return new TextEncoder().encode(envSecret);
 }
 
 /**
- * Create a new session in the database
+ * Create a JWT token for the user
  * @param userInfo Optional information about the user
- * @param expiryDays Number of days until the session expires
- * @returns The session token
+ * @param expiryDays Number of days until the token expires
+ * @returns The JWT token as string
  */
-export async function createSession(userInfo: string = 'Anonymous', expiryDays: number = 30): Promise<string> {
-  const token = generateAuthToken();
+export async function createJWT(userInfo: string = 'Anonymous', expiryDays: number = 30): Promise<string> {
+  const secretKey = getSecretKey();
+  
+  // Calculate expiry date
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + expiryDays);
   
-  await sql`
-    INSERT INTO sessions (token, user_info, created_at, expires_at)
-    VALUES (${token}, ${userInfo}, NOW(), ${expiresAt})
-  `;
+  // Create JWT with claims
+  const jwt = await new jose.SignJWT({ 
+    userInfo,
+    createdAt: new Date().toISOString()
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(expiresAt)
+    .setNotBefore(new Date())
+    .setSubject('auth')
+    .sign(secretKey);
   
-  return token;
-}
-
-/**
- * Verify if a session token is valid
- * @param token The token to verify
- * @returns True if the token is valid, false otherwise
- */
-export async function verifySession(token: string): Promise<boolean> {
-  if (!token) return false;
-  
-  try {
-    const result = await sql`
-      SELECT * FROM sessions
-      WHERE token = ${token}
-      AND expires_at > NOW()
-    `;
-    
-    return result && result.length > 0;
-  } catch (error) {
-    console.error('Error verifying session token:', error);
-    return false;
-  }
-}
-
-/**
- * Delete expired sessions from the database
- * @returns Number of sessions deleted
- */
-export async function cleanupExpiredSessions(): Promise<number> {
-  try {
-    const result = await sql`
-      DELETE FROM sessions
-      WHERE expires_at < NOW()
-      RETURNING token
-    `;
-    
-    return result.length;
-  } catch (error) {
-    console.error('Error cleaning up expired sessions:', error);
-    return 0;
-  }
-}
-
-/**
- * Delete a specific session by token
- * @param token The session token to delete
- */
-export async function deleteSession(token: string): Promise<void> {
+  // Log user authentication for audit purposes
   try {
     await sql`
-      DELETE FROM sessions
-      WHERE token = ${token}
+      INSERT INTO users (name, login_time)
+      VALUES (${userInfo}, NOW())
     `;
   } catch (error) {
-    console.error('Error deleting session:', error);
+    // Log but don't fail if this fails
+    console.error('Failed to log user authentication:', error);
+  }
+  
+  return jwt;
+}
+
+/**
+ * Alias for createJWT to maintain backward compatibility
+ * @deprecated Use createJWT instead
+ */
+export const createSession = createJWT;
+
+/**
+ * Verify if a JWT token is valid
+ * @param token The JWT token to verify
+ * @returns An object with validity and payload information
+ */
+export async function verifyToken(token: string): Promise<{ valid: boolean; payload?: jose.JWTPayload }> {
+  if (!token) return { valid: false };
+  
+  try {
+    const secretKey = getSecretKey();
+    const { payload } = await jose.jwtVerify(token, secretKey);
+    return { valid: true, payload };
+  } catch (error) {
+    console.error('Error verifying JWT token:', error);
+    return { valid: false };
   }
 }
+
+/**
+ * Alias for verifyToken to maintain backward compatibility
+ * @deprecated Use verifyToken instead
+ */
+export const verifySession = verifyToken;

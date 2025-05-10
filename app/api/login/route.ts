@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { verifyPassword, createSession, cleanupExpiredSessions } from '@/lib/auth';
+import { verifyPassword, createJWT } from '@/lib/auth';
 import bcryptjs from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
@@ -54,22 +54,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If the user provided optional contact details, store them
-    if (name || phone) {
-      try {
-        await sql`
-          INSERT INTO user_logins (name, phone, login_time)
-          VALUES (${name || null}, ${phone || null}, NOW())
-        `;
-      } catch (error) {
-        // Log but don't fail login if this fails
-        console.error('Failed to save user contact info:', error);
-      }
-    }
-
-    // Create a session and get the token
+    // Create user info string and JWT token
     const userInfo = name ? name : (phone ? phone : 'Anonymous user');
-    const authToken = await createSession(userInfo, 7); // 7 days session
+    const authToken = await createJWT(userInfo, 7); // 7 days session
     
     // Create a response with the success message
     const response = NextResponse.json({ 
@@ -77,7 +64,7 @@ export async function POST(request: NextRequest) {
       user: name || 'Anonymous'
     });
     
-    // Set the authentication token in a cookie
+    // Set the JWT token in a cookie
     response.cookies.set({
       name: 'auth_token',
       value: authToken,
@@ -89,15 +76,6 @@ export async function POST(request: NextRequest) {
       maxAge: 7 * 24 * 60 * 60
     });
     
-    // Clean up expired sessions while we're at it
-    try {
-      const deletedCount = await cleanupExpiredSessions();
-      console.log(`Cleaned up ${deletedCount} expired sessions`);
-    } catch (error) {
-      // Don't fail the login if cleanup fails
-      console.error('Failed to clean up expired sessions:', error);
-    }
-
     return response;
   } catch (error) {
     console.error('Login error:', error);

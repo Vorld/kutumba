@@ -58,14 +58,6 @@ CREATE TABLE IF NOT EXISTS users (
   login_time TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Sessions table for authentication
-CREATE TABLE IF NOT EXISTS sessions (
-  token TEXT PRIMARY KEY,
-  user_info TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at TIMESTAMPTZ NOT NULL
-);
-
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_persons_name ON persons(name);
 CREATE INDEX IF NOT EXISTS idx_relationships_person_id ON relationships(person_id);
