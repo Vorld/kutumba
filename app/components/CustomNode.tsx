@@ -8,13 +8,20 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
   const { name, nickname, gender, birthday } = data;
   
   return (
-    <div 
+    <div
       style={{
-        padding: '10px 20px',
+        width: '180px', // Fixed width
+        height: '100px', // Fixed height
+        padding: '10px', // Adjusted padding
         borderRadius: '8px',
         background: gender === 'male' ? '#lightblue' : gender === 'female' ? '#pink' : '#lightgray',
         border: '1px solid #555',
-        textAlign: 'center'
+        textAlign: 'center',
+        display: 'flex', // Added for centering content
+        flexDirection: 'column', // Added for centering content
+        justifyContent: 'center', // Added for centering content
+        boxSizing: 'border-box', // Ensure padding and border are included in width/height
+        overflow: 'hidden', // Hide overflow
       }}
       title={`Name: ${name}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${birthday ? new Date(birthday).toLocaleDateString() : 'N/A'}`}
     >
@@ -24,11 +31,16 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
       <Handle type="target" position={Position.Left} id="spouseInputLeft" isConnectable={isConnectable} style={{ left: '-5px' }} />
       <Handle type="source" position={Position.Right} id="spouseOutputRight" isConnectable={isConnectable} style={{ right: '-5px' }} />
       <Handle type="target" position={Position.Right} id="spouseInputRight" isConnectable={isConnectable} style={{ right: '-5px' }} />
-      <div>
+      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         <strong>{name}</strong>
       </div>
+      {nickname && (
+        <div style={{ fontSize: '0.8em', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          ({nickname})
+        </div>
+      )}
       {birthday && (
-        <div style={{ fontSize: '0.8em', color: '#333' }}>
+        <div style={{ fontSize: '0.8em', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           Born: {new Date(birthday).toLocaleDateString()}
         </div>
       )}

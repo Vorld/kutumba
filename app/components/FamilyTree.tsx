@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import  { // Standard default import
+import {
   ReactFlow,
   Controls,
   Background,
@@ -14,7 +14,7 @@ import  { // Standard default import
   Edge,
   Position,
 } from '@xyflow/react';
-import { stratify as d3Stratify, tree as d3Tree, HierarchyNode, HierarchyPointNode } from 'd3-hierarchy'; // Updated d3-hierarchy import
+import ELK, { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk.bundled.js';
 
 import CustomNode from './CustomNode';
 import MarriageNode from './MarriageNode';
@@ -37,314 +37,191 @@ const nodeTypes = {
 
 const customNodeWidth = 180;
 const customNodeHeight = 100;
-const marriageNodeWidth = 50;
-const marriageNodeHeight = 50;
+// keep in‑sync with MarriageNode visual size (10×10)
+const marriageNodeWidth = 10;
+const marriageNodeHeight = 10;
 
-interface StratifyInputData {
-  id: string;
-  parentId: string | null;
-  originalData?: FamilyTreeCustomNode; // Made originalData optional
+const elk = new ELK();
+
+/* deterministic spouse ordering */
+function chooseCoupleOrder(a: string, b: string): [string, string] {
+  return a < b ? [a, b] : [b, a];
 }
 
-const getLayoutedElements = (
-  nodesToLayout: FamilyTreeCustomNode[],
-  edgesToLayout: Edge[],
-  direction = 'TB'
-): { nodes: FamilyTreeCustomNode[]; edges: Edge[] } => {
-  const isHorizontal = direction === 'LR';
+/* --------------------------------------------------
+ *  ELK layout helper
+ * ------------------------------------------------*/
+async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
+  const elkGraph: ElkNode = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'layered',
+      'elk.direction': 'DOWN',
+      'elk.spacing.nodeNodeBetweenLayers': '10',
+      'elk.spacing.nodeNode': '150',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '20',
+      'elk.layered.edgeRouting': 'ORTHOGONAL',
+      'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+      'elk.layered.mergeEdges': 'false',
+    },
+    children: nodes.map((n) => {
+      const isMarriage = n.type === 'marriage';
+      const width = isMarriage ? marriageNodeWidth : customNodeWidth;
+      const height = isMarriage ? marriageNodeHeight : customNodeHeight;
 
-  if (nodesToLayout.length === 0) {
-    return { nodes: [], edges: [] };
-  }
+      if (isMarriage) {
+        return {
+          id: n.id,
+          width,
+          height,
+          properties: { 'elk.portConstraints': 'FIXED_ORDER' },
+          ports: [
+            { id: 'left',  properties: { 'port.side': 'WEST',  'port.index': '0' } },
+            { id: 'right', properties: { 'port.side': 'EAST',  'port.index': '1' } },
+            { id: 'down',  properties: { 'port.side': 'SOUTH' } },
+          ],
+        } as unknown as ElkNode;
+      }
+      return { id: n.id, width, height } as ElkNode;
+    }),
+    edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] } as ElkExtendedEdge)),
+  };
 
-  const nodeDataForStratify: StratifyInputData[] = nodesToLayout.map(n => ({
-    id: n.id,
-    parentId: null,
-    originalData: n,
+  const layout = await elk.layout(elkGraph);
+  const pos = new Map<string, { x: number; y: number }>();
+  layout.children?.forEach((c) => pos.set(c.id, { x: c.x ?? 0, y: c.y ?? 0 }));
+
+  const laidNodes = nodes.map((n) => {
+    const p = pos.get(n.id) ?? { x: 0, y: 0 };
+    const isMarriage = n.type === 'marriage';
+    return {
+      ...n,
+      targetPosition: Position.Top,
+      sourcePosition: Position.Bottom,
+      position: {
+        x: p.x - (isMarriage ? marriageNodeWidth / 2 : customNodeWidth / 2),
+        y: p.y - (isMarriage ? marriageNodeHeight / 2 : customNodeHeight / 2),
+      },
+    };
+  });
+
+  /* --- STEP 1: lift marriage circles closer to spouses --- */
+  const marriageLift = 100; // px tweak to taste
+  const lifted = laidNodes.map((n) =>
+    n.type === 'marriage' ? { ...n, position: { ...n.position, y: n.position.y - marriageLift } } : n,
+  );
+
+  /* --- STEP 2: horizontally centre each marriage node between its two spouses --- */
+  const posMap = new Map<string, { x: number; y: number }>(lifted.map((n) => [n.id, n.position]));
+
+  const centred = lifted.map((node) => {
+    if (node.type !== 'marriage') return node;
+    const incomingSpouses = edges.filter((e) => e.target === node.id).map((e) => e.source);
+    if (incomingSpouses.length !== 2) return node; // requires exactly two spouses
+    const [s1, s2] = incomingSpouses;
+    const p1 = posMap.get(s1);
+    const p2 = posMap.get(s2);
+    if (!p1 || !p2) return node;
+    const midX = (p1.x + p2.x) / 2;
+    return { ...node, position: { ...node.position, x: midX + 85 } }; // this number is based on the marriage node width and the custom node width
+  });
+
+  return { nodes: centred, edges };
+
+}
+
+/* --------------------------------------------------
+ *  Build React‑Flow graph from API
+ * ------------------------------------------------*/
+function buildGraph(persons: Person[], rels: ApiRelationship[]) {
+  const rfNodes: FamilyTreeCustomNode[] = persons.map((p) => ({
+    id: p.id,
+    type: 'custom',
+    data: {
+      id: p.id,
+      label: p.name,
+      name: p.name,
+      nickname: p.nickname,
+      birthday: p.birthday,
+      gender: p.gender,
+    } as FamilyTreeNodeData,
+    position: { x: 0, y: 0 },
   }));
 
-  const nodeDataMap = new Map(nodeDataForStratify.map(n => [n.id, n]));
+  const rfEdges: Edge[] = [];
+  const marriageMap = new Map<string, string>();
+  const childParents = new Map<string, string[]>();
 
-  edgesToLayout.forEach(edge => {
-    const targetNode = nodeDataMap.get(edge.target);
-    const sourceNode = nodeDataMap.get(edge.source);
-
-    if (targetNode && sourceNode) {
-      // Prefer parent-child relationships for hierarchy if possible
-      // This logic might need to be more sophisticated depending on how parent/child is defined
-      // For now, if an edge exists, we assume source is parent of target for tree structure
-      // This will likely make marriage nodes children of one of the spouses in the D3 tree.
-      if (targetNode.parentId === null) {
-        targetNode.parentId = edge.source;
-      }
+  /* spouses → marriage node */
+  rels.filter((r) => r.relationship_type === 'spouse').forEach((r) => {
+    const [left, right] = chooseCoupleOrder(r.person1_id, r.person2_id);
+    const key = `${left}-${right}`;
+    if (!marriageMap.has(key)) {
+      const mId = `marriage-${key}`;
+      marriageMap.set(key, mId);
+      rfNodes.push({ id: mId, type: 'marriage', data: { label: 'Marriage' } as FamilyTreeNodeData, position: { x: 0, y: 0 } });
+      rfEdges.push({ id: `e-${left}-${mId}`, source: left, target: mId, sourceHandle: 'spouseOutputLeft', targetHandle: 'right', type: 'smoothstep' });
+      rfEdges.push({ id: `e-${right}-${mId}`, source: right, target: mId, sourceHandle: 'spouseOutputRight', targetHandle: 'left', type: 'smoothstep' });
     }
   });
 
-  // Identify potential roots (nodes with no parentId set yet)
-  let potentialRoots = nodeDataForStratify.filter(n => n.parentId === null);
-
-  // If no roots found (e.g. circular dependencies or all nodes have parents),
-  // or multiple roots, we might need a strategy. For now, pick the first node if no explicit root.
-  if (potentialRoots.length === 0 && nodeDataForStratify.length > 0) {
-    // Fallback: if no node has parentId null, try to find a node that is not a target of any edge
-    const allTargetIds = new Set(edgesToLayout.map(e => e.target));
-    potentialRoots = nodeDataForStratify.filter(n => !allTargetIds.has(n.id));
-    if (potentialRoots.length === 0 && nodeDataForStratify.length > 0) { // If still no root, pick the first node as a last resort
-        const firstNodeAsRoot = nodeDataMap.get(nodeDataForStratify[0].id);
-        if (firstNodeAsRoot) firstNodeAsRoot.parentId = "__D3_VIRTUAL_ROOT__";
-        nodeDataForStratify.push({ id: "__D3_VIRTUAL_ROOT__", parentId: null }); // No originalData for virtual root
-        potentialRoots = nodeDataForStratify.filter(n => n.id === "__D3_VIRTUAL_ROOT__");
+  /* collect parent arrays */
+  rels.forEach((r) => {
+    let child: string | undefined; let parent: string | undefined;
+    if (r.relationship_type === 'parent') { parent = r.person1_id; child = r.person2_id; }
+    else if (r.relationship_type === 'child') { child = r.person1_id; parent = r.person2_id; }
+    if (child && parent) {
+      if (!childParents.has(child)) childParents.set(child, []);
+      if (!childParents.get(child)!.includes(parent)) childParents.get(child)!.push(parent);
     }
-  } else if (potentialRoots.length > 1) {
-    // If multiple roots, create a virtual root to connect them
-    const virtualRootId = "__D3_VIRTUAL_ROOT__";
-    nodeDataForStratify.push({ id: virtualRootId, parentId: null }); // No originalData for virtual root
-    potentialRoots.forEach(rootNode => {
-        const actualRootNode = nodeDataMap.get(rootNode.id);
-        if (actualRootNode) actualRootNode.parentId = virtualRootId;
-    });
-    potentialRoots = nodeDataForStratify.filter(n => n.id === virtualRootId); 
-  }
-
-  let rootHierarchyNode: HierarchyNode<StratifyInputData>;
-  try {
-    const stratifyFunc = d3Stratify<StratifyInputData>()
-      .id(d => d.id)
-      .parentId(d => d.parentId);
-    rootHierarchyNode = stratifyFunc(nodeDataForStratify.filter(n => nodeDataMap.has(n.id) || n.id === "__D3_VIRTUAL_ROOT__"));
-  } catch (e) {
-    console.error("FamilyTree: Failed to stratify data for D3 layout. Check for cycles or parent issues.", e, nodeDataForStratify);
-    return {
-      nodes: nodesToLayout.map(n => ({
-        ...n,
-        position: n.position || { x: Math.random() * 500, y: Math.random() * 500 },
-        width: n.type === 'marriage' ? marriageNodeWidth : customNodeWidth,
-        height: n.type === 'marriage' ? marriageNodeHeight : customNodeHeight,
-      })),
-      edges: edgesToLayout,
-    };
-  }
-
-  const treeLayout = d3Tree<StratifyInputData>();
-  const avgNodeW = customNodeWidth;
-  const avgNodeH = customNodeHeight;
-
-  if (isHorizontal) {
-    treeLayout.nodeSize([avgNodeH + 70, avgNodeW + 70]); // [height, width] for horizontal
-  } else {
-    treeLayout.nodeSize([avgNodeW + 70, avgNodeH + 70]); // [width, height] for vertical
-  }
-
-  const d3RootPointNode = treeLayout(rootHierarchyNode);
-
-  const layoutedNodesFromD3 = d3RootPointNode.descendants()
-    .filter(d3Node => d3Node.data.id !== "__D3_VIRTUAL_ROOT__") // Exclude virtual root
-    .map((d3Node: HierarchyPointNode<StratifyInputData>) => {
-    const originalNode = d3Node.data.originalData!; // Non-null assertion, as virtual root is filtered
-    const nodeW = originalNode.type === 'marriage' ? marriageNodeWidth : customNodeWidth;
-    const nodeH = originalNode.type === 'marriage' ? marriageNodeHeight : customNodeHeight;
-
-    let x, y;
-    if (isHorizontal) {
-      x = d3Node.y - nodeW / 2; // d3.tree uses x for depth, y for breadth in horizontal
-      y = d3Node.x - nodeH / 2;
-    } else {
-      x = d3Node.x - nodeW / 2; // d3.tree uses x for breadth, y for depth in vertical
-      y = d3Node.y - nodeH / 2;
-    }
-
-    return {
-      ...originalNode,
-      targetPosition: isHorizontal ? Position.Left : Position.Top,
-      sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
-      position: { x, y },
-      width: nodeW,
-      height: nodeH,
-    };
   });
 
-  const layoutedNodeMap = new Map(layoutedNodesFromD3.map(n => [n.id, n]));
-  const finalNodes = nodesToLayout.map(n => {
-    return layoutedNodeMap.get(n.id) || {
-        ...n,
-        position: n.position || { x: Math.random() * 200, y: Math.random() * 200 },
-        width: n.type === 'marriage' ? marriageNodeWidth : customNodeWidth,
-        height: n.type === 'marriage' ? marriageNodeHeight : customNodeHeight,
-    };
+  /* parent arrays → edges */
+  childParents.forEach((parents, child) => {
+    if (parents.length === 2) {
+      const [left, right] = chooseCoupleOrder(parents[0], parents[1]);
+      const mId = marriageMap.get(`${left}-${right}`);
+      if (mId) rfEdges.push({ id: `e-${mId}-${child}`, source: mId, target: child, sourceHandle: 'down', targetHandle: 'parentInput', type: 'smoothstep' });
+    } else if (parents.length === 1) {
+      const pId = parents[0];
+      rfEdges.push({ id: `e-${pId}-${child}`, source: pId, target: child, sourceHandle: 'childOutput', targetHandle: 'parentInput', type: 'smoothstep' });
+    }
   });
 
-  return { nodes: finalNodes, edges: edgesToLayout };
-};
+  return { nodes: rfNodes, edges: rfEdges };
+}
 
+/* --------------------------------------------------
+ *  Component
+ * ------------------------------------------------*/
 const FamilyTree: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState<FamilyTreeCustomNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const processFamilyData = useCallback(
-    (
-      persons: Person[],
-      apiRelationships: ApiRelationship[]
-    ): { initialNodes: FamilyTreeCustomNode[]; initialEdges: Edge[] } => {
-      const initialNodes: FamilyTreeCustomNode[] = [];
-      const initialEdges: Edge[] = [];
-      const marriages = new Map<string, { p1: string; p2: string; marriageNodeId: string }>();
-      const childToParentsMap = new Map<string, string[]>();
-
-      persons.forEach((person) => {
-        initialNodes.push({
-          id: person.id,
-          type: 'custom',
-          data: {
-            id: person.id,
-            label: person.name,
-            name: person.name,
-            nickname: person.nickname,
-            birthday: person.birthday,
-            gender: person.gender,
-          } as FamilyTreeNodeData,
-          position: { x: 0, y: 0 },
-        });
-      });
-
-      apiRelationships
-        .filter((rel) => rel.relationship_type === 'spouse')
-        .forEach((rel) => {
-          const person1_id = rel.person1_id;
-          const person2_id = rel.person2_id;
-          const sortedSpouseIds = [person1_id, person2_id].sort().join('-');
-
-          if (!marriages.has(sortedSpouseIds)) {
-            const marriageNodeId = `marriage-${sortedSpouseIds}`;
-            initialNodes.push({
-              id: marriageNodeId,
-              type: 'marriage',
-              data: { label: 'Marriage' } as FamilyTreeNodeData,
-              position: { x: 0, y: 0 },
-            });
-            marriages.set(sortedSpouseIds, { p1: person1_id, p2: person2_id, marriageNodeId });
-
-            initialEdges.push({
-              id: `edge-${person1_id}-${marriageNodeId}`,
-              source: person1_id,
-              target: marriageNodeId,
-              sourceHandle: 'spouseOutputRight',
-              targetHandle: 'spouseInputLeft',
-              type: 'smoothstep',
-            });
-
-            initialEdges.push({
-              id: `edge-${person2_id}-${marriageNodeId}`,
-              source: person2_id,
-              target: marriageNodeId,
-              sourceHandle: 'spouseOutputLeft',
-              targetHandle: 'spouseInputRight',
-              type: 'smoothstep',
-            });
-
-          }
-        });
-
-      apiRelationships.forEach((rel) => {
-        let childId: string | undefined;
-        let parentId: string | undefined;
-
-        if (rel.relationship_type === 'parent') {
-          parentId = rel.person1_id;
-          childId = rel.person2_id;
-        } else if (rel.relationship_type === 'child') {
-          childId = rel.person1_id;
-          parentId = rel.person2_id;
-        }
-
-        if (childId && parentId) {
-          if (!childToParentsMap.has(childId)) {
-            childToParentsMap.set(childId, []);
-          }
-          if (!childToParentsMap.get(childId)!.includes(parentId)) {
-            childToParentsMap.get(childId)!.push(parentId);
-          }
-        }
-      });
-      
-      childToParentsMap.forEach((parentIds, childId) => {
-        if (parentIds.length === 2) {
-          const sortedParentIds = [...parentIds].sort().join('-');
-          if (marriages.has(sortedParentIds)) {
-            const marriage = marriages.get(sortedParentIds)!;
-            initialEdges.push({
-              id: `edge-${marriage.marriageNodeId}-${childId}`,
-              source: marriage.marriageNodeId,
-              target: childId,
-              sourceHandle: 'childOutput',
-              targetHandle: 'parentInput',
-              type: 'smoothstep',
-            });
-          } else {
-            console.warn(`Marriage node not found for parents of child ${childId}: ${parentIds.join(', ')}`);
-          }
-        } else if (parentIds.length === 1) {
-             console.warn(`Child ${childId} has only one parent listed: ${parentIds[0]}. Cannot form a marriage link for parents.`);
-        } else if (parentIds.length > 2) {
-            console.warn(`Child ${childId} has more than two parents listed: ${parentIds.join(', ')}. This is unusual.`);
-        }
-      });
-
-      return { initialNodes, initialEdges };
-    },
-    []
-  );
-
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      setError(null);
+    (async () => {
       try {
-        const [personsResponse, relationshipsResponse] = await Promise.all([
-          fetch('/api/persons'),
-          fetch('/api/relationships/all'),
-        ]);
+        const [pRes, rRes] = await Promise.all([fetch('/api/persons'), fetch('/api/relationships/all')]);
+        if (!pRes.ok || !rRes.ok) throw new Error('Fetch failed');
+        const persons: Person[] = await pRes.json();
+        const rels: ApiRelationship[] = await rRes.json();
+        const raw = buildGraph(persons, rels);
+        const laid = await runELK(raw.nodes, raw.edges);
+        setNodes(laid.nodes); setEdges(laid.edges);
+      } catch (e) { setError((e as Error).message); }
+      finally { setLoading(false); }
+    })();
+  }, []);
 
-        if (!personsResponse.ok) throw new Error(`Failed to fetch persons: ${personsResponse.statusText}`);
-        if (!relationshipsResponse.ok) throw new Error(`Failed to fetch relationships: ${relationshipsResponse.statusText}`);
+  const onConnect = useCallback((p: Connection | Edge) => setEdges((eds) => addEdge(p, eds)), [setEdges]);
 
-        const persons: Person[] = await personsResponse.json();
-        const apiRelationships: ApiRelationship[] = await relationshipsResponse.json();
-        
-        if (!Array.isArray(persons)) throw new Error('Fetched persons data is not an array.');
-        if (!Array.isArray(apiRelationships)) throw new Error('Fetched relationships data is not an array.');
-
-        const { initialNodes, initialEdges } = processFamilyData(persons, apiRelationships);
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-          initialNodes,
-          initialEdges
-        );
-
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
-      } catch (err) {
-        console.error('Error fetching or processing family data:', err);
-        setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [processFamilyData, setNodes, setEdges]);
-
-  const onConnect = useCallback(
-    (params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
-  );
-
-  if (isLoading) return <div style={{ padding: '20px' }}>Loading family tree data...</div>;
-  if (error) return <div style={{ padding: '20px', color: 'red' }}>Error loading family tree: {error}</div>;
-  if (nodes.length === 0 && !isLoading) return <div style={{ padding: '20px' }}>No family data found or processed.</div>;
+  if (loading) return <div style={{ padding: 20 }}>Loading…</div>;
+  if (error) return <div style={{ padding: 20, color: 'red' }}>{error}</div>;
 
   return (
-    <div style={{ width: '100%', height: '100vh'}}>
+    <div style={{ width: '100%', height: '100vh' }}>
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
@@ -357,6 +234,7 @@ const FamilyTree: React.FC = () => {
           fitViewOptions={{ padding: 0.1 }}
           proOptions={{ hideAttribution: true }}
           connectionLineType={ConnectionLineType.SmoothStep}
+          nodesDraggable={false}
         >
           <Controls />
           <Background />
