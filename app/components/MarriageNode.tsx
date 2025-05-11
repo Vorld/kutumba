@@ -22,8 +22,7 @@ const MarriageNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ isConnectable
       }}
     >
       {/* Handles for spouses (target) and children (source) */}
-      <Handle type="target" position={Position.Left} id="spouseInputLeft" isConnectable={isConnectable} style={{ left: '-5px', background: '#777' }} />
-      <Handle type="target" position={Position.Right} id="spouseInputRight" isConnectable={isConnectable} style={{ right: '-5px', background: '#777' }} />
+      <Handle type="target" position={Position.Top} id="spouseInputTop" isConnectable={isConnectable} style={{ top: '-5px', background: '#777' }} />
       <Handle type="source" position={Position.Bottom} id="childOutput" isConnectable={isConnectable} style={{ bottom: '-5px', background: '#777' }} />
     </div>
   );
