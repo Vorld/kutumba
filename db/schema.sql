@@ -32,9 +32,9 @@ CREATE TABLE IF NOT EXISTS persons (
 -- Relationships table
 CREATE TABLE IF NOT EXISTS relationships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
-  related_person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
-  relationship_type TEXT NOT NULL CHECK (relationship_type IN ('parent', 'child', 'spouse')),
+  person1_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  person2_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  relationship_type TEXT NOT NULL CHECK (relationship_type IN ('parent', 'spouse')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (person_id, related_person_id, relationship_type)
 );

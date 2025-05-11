@@ -13,7 +13,7 @@ export default function Home() {
       <main className="flex flex-col w-full h-full items-center justify-center row-start-2">
         {/* Replace existing main content with FamilyTreeWrapper */}
         {/* The FamilyTreeWrapper will manage its own height and width requirements for the flow chart */}
-        <FamilyTreeWrapper initialPersonId="736a1e18-4fcc-42c5-ae3a-32fd0c9bf26d" />
+        <FamilyTreeWrapper/>
       </main>
     </div>
   );
