@@ -11,7 +11,6 @@ import {
   addEdge,
   Edge as RFEdge,
   MarkerType,
-  EdgeMarker,
   ConnectionLineType,
   OnConnect,
   useReactFlow,
@@ -24,31 +23,30 @@ import Fuse from 'fuse.js';
 import dagre from 'dagre';
 
 import CustomNode from './CustomNode';
+import MarriageNode from './MarriageNode';
 import { Relationship, FamilyTreeCustomNode } from '@/lib/utils';
 import type { Person } from '@/types';
 
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
+  marriage: MarriageNode,
 };
 
 // Dagre layout function
 const getLayoutedElements = (nodes: FamilyTreeCustomNode[], edges: RFEdge[], direction = 'TB') => {
   const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({})); // Default for edges passed to Dagre
-  dagreGraph.setGraph({ rankdir: direction, nodesep: 100, ranksep: 120 }); // Adjusted ranksep for more space
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+  // Adjust ranksep for vertical spacing; nodesep for horizontal
+  dagreGraph.setGraph({ rankdir: direction, nodesep: 100, ranksep: 30 }); // Reduced ranksep
 
   nodes.forEach((node) => {
-    // Ensure node dimensions are considered. These are estimates; might need adjustment.
-    // Or, get actual dimensions if CustomNode renders with fixed size or after first render.
-    const nodeWidth = 150; // Approximate width of CustomNode
-    const nodeHeight = 100; // Approximate height of CustomNode
+    const nodeWidth = node.type === 'marriage' ? 40 : 150; // Made marriage node smaller
+    const nodeHeight = node.type === 'marriage' ? 40 : 100; // Made marriage node smaller
     dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
   });
 
-  // ONLY add hierarchical (parent-child) edges to Dagre for layout calculation.
-  // Spouse edges are in the 'edges' array for React Flow to render but are not used by Dagre for ranking here.
   edges.forEach((edge) => {
-    if (edge.label === 'is parent of') {
+    if (edge.data?.layoutType === 'hierarchical') {
       dagreGraph.setEdge(edge.source, edge.target);
     }
   });
@@ -57,13 +55,15 @@ const getLayoutedElements = (nodes: FamilyTreeCustomNode[], edges: RFEdge[], dir
 
   return nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
+    const width = node.type === 'marriage' ? 40 : 150;
+    const height = node.type === 'marriage' ? 40 : 100;
     return {
       ...node,
-      targetPosition: Position.Top, // For dagre layout, good to specify
-      sourcePosition: Position.Bottom, // For dagre layout
+      targetPosition: Position.Top,
+      sourcePosition: Position.Bottom,
       position: {
-        x: nodeWithPosition.x - nodeWithPosition.width / 2,
-        y: nodeWithPosition.y - nodeWithPosition.height / 2,
+        x: nodeWithPosition.x - width / 2,
+        y: nodeWithPosition.y - height / 2,
       },
     };
   });
@@ -83,7 +83,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
 
   useEffect(() => {
     if (nodes.length > 0) {
-      setFuse(new Fuse(nodes, {
+      setFuse(new Fuse(nodes.filter(n => n.type === 'custom'), { // Only search person nodes
         keys: ['data.name', 'data.label', 'data.nickname'],
         includeScore: true,
         threshold: 0.4,
@@ -95,110 +95,201 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
-  // Updated fetchDataAndSetFlow to load ALL persons and ALL relationships
   const fetchDataAndSetFlow = useCallback(async () => {
     setIsLoading(true);
     try {
       const allPersonsResponse = await fetch('/api/persons');
-      if (!allPersonsResponse.ok) {
-        console.error('Failed to fetch all persons data:', allPersonsResponse.statusText);
-        setIsLoading(false); return;
-      }
+      if (!allPersonsResponse.ok) throw new Error(`Failed to fetch persons: ${allPersonsResponse.statusText}`);
       const allPersonsData: Person[] = await allPersonsResponse.json();
 
       const allRelationshipsResponse = await fetch('/api/relationships/all');
-      if (!allRelationshipsResponse.ok) {
-        console.error('Failed to fetch all relationships:', allRelationshipsResponse.statusText);
-        setIsLoading(false); return;
-      }
+      if (!allRelationshipsResponse.ok) throw new Error(`Failed to fetch relationships: ${allRelationshipsResponse.statusText}`);
       const allRelationshipsData: Relationship[] = await allRelationshipsResponse.json();
 
       if (!allPersonsData || allPersonsData.length === 0) {
-        console.warn('No persons data found. The tree will be empty.');
+        console.warn('No persons data found.');
         setNodes([]);
         setEdges([]);
         setIsLoading(false);
         return;
       }
 
-      const initialNodes: FamilyTreeCustomNode[] = allPersonsData.map(person => ({
+      const personNodes: FamilyTreeCustomNode[] = allPersonsData.map(person => ({
         id: person.id,
         type: 'custom',
-        data: { ...person, label: person.name || person.id },
-        position: { x: 0, y: 0 }, // Initial position, dagre will overwrite
+        data: { ...person, label: person.name || person.id, id: person.id, name: person.name },
+        position: { x: 0, y: 0 },
       }));
 
-      const initialEdges: RFEdge[] = allRelationshipsData.map(rel => {
-        const baseMarkerColor = '#2a9d8f';
-        const baseMarker: EdgeMarker = { type: MarkerType.ArrowClosed, color: baseMarkerColor };
-        let edgeStyle = {};
-        let finalMarker: EdgeMarker | undefined = baseMarker;
-        let sourceId = rel.person1_id;
-        let targetId = rel.person2_id;
-        let edgeLabel: string = rel.relationship_type;
-        let sHandle: string | undefined = undefined;
-        let tHandle: string | undefined = undefined;
+      const tempProcessedEdges: RFEdge[] = [];
+      const marriageNodesMap = new Map<string, FamilyTreeCustomNode>();
+      const newMarriageNodes: FamilyTreeCustomNode[] = [];
 
-        switch (rel.relationship_type) {
-          case 'spouse':
-            edgeStyle = { stroke: '#555', strokeWidth: 2 };
-            finalMarker = undefined; // No arrow for spouses
-            sHandle = 'spouseOutputRight'; 
-            tHandle = 'spouseInputLeft';
-            // edgeLabel remains 'spouse'
-            break;
-          case 'child': // API means: rel.person1_id is CHILD, rel.person2_id is PARENT
-            sourceId = rel.person2_id; // Parent
-            targetId = rel.person1_id; // Child
-            edgeStyle = { stroke: baseMarkerColor, strokeWidth: 2 };
-            finalMarker = { ...baseMarker };
-            sHandle = 'childOutput';    // From parent's bottom
-            tHandle = 'parentInput';    // To child's top
-            edgeLabel = 'is parent of';
-            break;
-          case 'parent': // API means: rel.person1_id is PARENT, rel.person2_id is CHILD
-            sourceId = rel.person1_id; // Parent
-            targetId = rel.person2_id; // Child
-            edgeStyle = { stroke: baseMarkerColor, strokeWidth: 2 };
-            finalMarker = { ...baseMarker };
-            sHandle = 'childOutput';    // From parent's bottom
-            tHandle = 'parentInput';    // To child's top
-            edgeLabel = 'is parent of';
-            break;
-          default: // Unknown relationship types
-            edgeStyle = { stroke: '#ccc', strokeWidth: 1 };
-            finalMarker = { type: MarkerType.ArrowClosed, color: '#ccc' };
-            // Default handles will be used if sHandle/tHandle remain undefined
+      allRelationshipsData.forEach(rel => {
+        if (rel.relationship_type === 'spouse') {
+          const spouse1Id = rel.person1_id;
+          const spouse2Id = rel.person2_id;
+          const marriageNodeId = `marriage-${[spouse1Id, spouse2Id].sort().join('-')}`;
+
+          if (!marriageNodesMap.has(marriageNodeId)) {
+            const marriageNode: FamilyTreeCustomNode = {
+              id: marriageNodeId,
+              type: 'marriage',
+              data: { label: '' }, // No label for marriage node itself needed for display
+              position: { x: 0, y: 0 },
+            };
+            marriageNodesMap.set(marriageNodeId, marriageNode);
+            newMarriageNodes.push(marriageNode);
+          }
+
+          tempProcessedEdges.push({
+            id: `e-${spouse1Id}-to-${marriageNodeId}`,
+            source: spouse1Id,
+            target: marriageNodeId,
+            type: 'smoothstep',
+            sourceHandle: 'spouseOutputRight',
+            targetHandle: 'spouseInputLeft',
+            style: { stroke: '#a0a0a0', strokeWidth: 1.5 }, // Spouse-marriage edge style
+            data: { layoutType: 'hierarchical' }
+          });
+          tempProcessedEdges.push({
+            id: `e-${spouse2Id}-to-${marriageNodeId}`,
+            source: spouse2Id,
+            target: marriageNodeId,
+            type: 'smoothstep',
+            sourceHandle: 'spouseOutputLeft',
+            targetHandle: 'spouseInputRight',
+            style: { stroke: '#a0a0a0', strokeWidth: 1.5 }, // Spouse-marriage edge style
+            data: { layoutType: 'hierarchical' }
+          });
         }
-        return {
-          id: `e-${rel.id}`,
-          source: sourceId,
-          target: targetId,
-          label: edgeLabel,
-          style: edgeStyle,
-          markerEnd: finalMarker,
-          sourceHandle: sHandle,
-          targetHandle: tHandle,
-        };
+      });
+      
+      const allProcessedNodes = [...personNodes, ...newMarriageNodes];
+
+      const parentChildRels = allRelationshipsData.filter(
+        rel => rel.relationship_type === 'parent' || rel.relationship_type === 'child'
+      );
+
+      parentChildRels.forEach(rel => {
+        const parentId = rel.relationship_type === 'parent' ? rel.person1_id : rel.person2_id;
+        const childId = rel.relationship_type === 'parent' ? rel.person2_id : rel.person1_id;
+
+        let childConnectedToMarriageNode = false;
+        for (const marriageNodeId of marriageNodesMap.keys()) {
+          const spousesOfMarriageNode = tempProcessedEdges
+            .filter(e => e.target === marriageNodeId && e.data?.layoutType === 'hierarchical')
+            .map(e => e.source);
+
+          if (spousesOfMarriageNode.includes(parentId)) {
+            const otherSpouseId = spousesOfMarriageNode.find(sId => sId !== parentId);
+            if (otherSpouseId) {
+              const isOtherSpouseAlsoParent = parentChildRels.some(r =>
+                (r.relationship_type === 'parent' && r.person1_id === otherSpouseId && r.person2_id === childId) ||
+                (r.relationship_type === 'child' && r.person2_id === otherSpouseId && r.person1_id === childId)
+              );
+
+              if (isOtherSpouseAlsoParent) {
+                if (!tempProcessedEdges.some(e => e.source === marriageNodeId && e.target === childId)) {
+                    tempProcessedEdges.push({
+                        id: `e-${marriageNodeId}-to-${childId}`,
+                        source: marriageNodeId,
+                        target: childId,
+                        type: 'smoothstep',
+                        sourceHandle: 'childOutput',
+                        targetHandle: 'parentInput',
+                        markerEnd: { type: MarkerType.ArrowClosed, color: '#2a9d8f' },
+                        style: { stroke: '#2a9d8f', strokeWidth: 2 }, // Marriage-child edge style
+                        data: { layoutType: 'hierarchical' }
+                    });
+                }
+                childConnectedToMarriageNode = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (!childConnectedToMarriageNode) {
+          // Ensure this direct parent-child edge doesn't already exist from the other direction if data is duplicated
+          if (!tempProcessedEdges.some(e => e.source === parentId && e.target === childId && e.data?.layoutType === 'hierarchical')) {
+            tempProcessedEdges.push({
+              id: `e-${parentId}-to-${childId}-${rel.id}`,
+              source: parentId,
+              target: childId,
+              type: 'smoothstep',
+              sourceHandle: 'childOutput',
+              targetHandle: 'parentInput',
+              markerEnd: { type: MarkerType.ArrowClosed, color: '#2a9d8f' },
+              style: { stroke: '#2a9d8f', strokeWidth: 2 }, // Parent-child edge style
+              data: { layoutType: 'hierarchical' }
+            });
+          }
+        }
+      });
+      
+      const finalEdges = tempProcessedEdges.filter(edge => {
+        // Keep spouse-to-marriage and marriage-to-child edges
+        if (edge.source.startsWith('marriage-') || edge.target.startsWith('marriage-')) {
+            return true;
+        }
+        // For direct parent-child edges, check for redundancy
+        if (edge.data?.layoutType === 'hierarchical') {
+            const parent = edge.source;
+            const child = edge.target;
+
+            const marriageEdgeForParent = tempProcessedEdges.find(
+                e => e.source === parent && e.target.startsWith('marriage-') && e.data?.layoutType === 'hierarchical'
+            );
+            if (marriageEdgeForParent) {
+                const marriageNodeId = marriageEdgeForParent.target;
+                const childToMarriageEdge = tempProcessedEdges.find(
+                    e => e.source === marriageNodeId && e.target === child && e.data?.layoutType === 'hierarchical'
+                );
+                if (childToMarriageEdge) {
+                    return false; // Redundant direct parent-child edge, remove it
+                }
+            }
+        }
+        return true; 
       });
 
-      // Apply Dagre layout
-      const layoutedNodes = getLayoutedElements(initialNodes, initialEdges);
-      setNodes(layoutedNodes);
-      setEdges(initialEdges);
+      const layoutedNodes = getLayoutedElements(allProcessedNodes, finalEdges);
+
+      // Custom positioning for marriage nodes
+      const adjustedNodes = layoutedNodes.map(node => {
+        if (node.type === 'marriage') {
+          const spouses = finalEdges
+            .filter(edge => edge.target === node.id)
+            .map(edge => layoutedNodes.find(n => n.id === edge.source))
+            .filter(spouse => spouse !== undefined);
+
+          if (spouses.length === 2) {
+            const spouse1 = spouses[0];
+            const spouse2 = spouses[1];
+
+            // Calculate the desired vertical position for the spouses
+            const desiredVerticalSpacing = 15; // Adjust this value as needed
+            spouse1.position.y = node.position.y - desiredVerticalSpacing;
+            spouse2.position.y = node.position.y - desiredVerticalSpacing;
+          }
+        }
+        return node;
+      });
+
+      setNodes(adjustedNodes);
+      setEdges(finalEdges);
 
     } catch (error) {
-      console.error('Error fetching initial data for the entire tree:', error);
-      setNodes([]); 
-      setEdges([]); 
+      console.error('Error processing family tree data:', error);
+      setNodes([]);
+      setEdges([]);
     } finally {
       setIsLoading(false);
     }
   }, [setNodes, setEdges]);
 
   useEffect(() => {
-    // initialPersonId is no longer used for the primary data fetch here,
-    // as we are fetching all data. It could be used later for focusing the view.
     fetchDataAndSetFlow();
   }, [fetchDataAndSetFlow]);
 
@@ -215,16 +306,18 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
     if (!debouncedSearchTerm.trim() || !fuse) {
       return [];
     }
+    // Fuse instance is already filtered to personNodes in useEffect
     return fuse.search(debouncedSearchTerm.trim()).map(result => result.item as FamilyTreeCustomNode);
   }, [debouncedSearchTerm, fuse]);
 
   useEffect(() => {
     if (searchResults.length > 0) {
       const primaryResultId = searchResults[0].id;
-      const nodeToFocus = nodes.find(n => n.id === primaryResultId);
-      if (nodeToFocus) {
-        console.log('Primary search result:', nodeToFocus);
-        fitView({ nodes: [{id: primaryResultId}], duration: 800, padding: 0.2 });
+      if (primaryResultId) {
+        const nodeToFocus = nodes.find(n => n.id === primaryResultId);
+        if (nodeToFocus) {
+          fitView({ nodes: [{id: primaryResultId}], duration: 800, padding: 0.2 });
+        }
       }
     }
   }, [searchResults, fitView, nodes]);
@@ -257,7 +350,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = () => {
       <ReactFlow
         nodes={nodes.map(node => ({
           ...node,
-          style: searchResults.find(n => n.id === node.id) ? { ...node.style, border: '2px solid blue', boxShadow: '0 0 10px blue' } : node.style,
+          style: searchResults.find(n => n.id === node.id && node.type === 'custom') ? { ...node.style, border: '2px solid blue', boxShadow: '0 0 10px blue' } : node.style,
         }))}
         edges={edges}
         onNodesChange={onNodesChange}

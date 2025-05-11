@@ -13,9 +13,9 @@ export interface Relationship {
 // Define a specific data structure for custom data within React Flow nodes
 // Only include properties that are actually used by the node or for interactions.
 export interface FamilyTreeNodeData extends Record<string, unknown> {
-  id: string; 
-  label: string; // Typically the person's name for display
-  name: string;
+  label: string; // Used for person's name or marriage description
+  id?: string; // Optional: Person ID for 'custom' nodes
+  name?: string; // Optional: Person Name for 'custom' nodes
   nickname?: string | null;
   birthday?: string | null;
   gender?: Person['gender'];
@@ -26,8 +26,8 @@ export interface FamilyTreeNodeData extends Record<string, unknown> {
 }
 
 // Define a custom node type that uses FamilyTreeNodeData
-// The second type argument to Node is the node type string, e.g., 'custom'
-export type FamilyTreeCustomNode = Node<FamilyTreeNodeData, 'custom'>; 
+// The second type argument to Node is the node type string, e.g., 'custom' or 'marriage'
+export type FamilyTreeCustomNode = Node<FamilyTreeNodeData, 'custom' | 'marriage'>; 
 
 /**
  * Transforms a single person's data and their direct relationships into React Flow nodes and edges.

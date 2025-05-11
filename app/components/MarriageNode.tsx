@@ -1,0 +1,32 @@
+'use client';
+
+import React, { memo } from 'react';
+import { Handle, Position, NodeProps } from '@xyflow/react';
+import { FamilyTreeCustomNode } from '@/lib/utils';
+
+const MarriageNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ isConnectable }) => {
+  // data prop is available if needed for future use (e.g., displaying marriage date)
+  return (
+    <div
+      style={{
+        width: '40px', // Reduced size
+        height: '40px', // Reduced size
+        borderRadius: '50%',
+        background: '#888', // Slightly lighter background
+        border: '1.5px solid #555', // Thinner border
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        color: 'white',
+        fontSize: '0.7em', // Slightly smaller font if we add text later
+      }}
+    >
+      {/* Handles for spouses (target) and children (source) */}
+      <Handle type="target" position={Position.Left} id="spouseInputLeft" isConnectable={isConnectable} style={{ left: '-5px', background: '#777' }} />
+      <Handle type="target" position={Position.Right} id="spouseInputRight" isConnectable={isConnectable} style={{ right: '-5px', background: '#777' }} />
+      <Handle type="source" position={Position.Bottom} id="childOutput" isConnectable={isConnectable} style={{ bottom: '-5px', background: '#777' }} />
+    </div>
+  );
+};
+
+export default memo(MarriageNode);

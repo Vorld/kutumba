@@ -16,7 +16,7 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
         border: '1px solid #555',
         textAlign: 'center'
       }}
-      title={`Name: ${name}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${birthday ? new Date(birthday + 'T00:00:00').toLocaleDateString() : 'N/A'}`}
+      title={`Name: ${name}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${birthday ? new Date(birthday).toLocaleDateString() : 'N/A'}`}
     >
       <Handle type="target" position={Position.Top} id="parentInput" isConnectable={isConnectable} style={{ top: '-5px' }} />
       <Handle type="source" position={Position.Bottom} id="childOutput" isConnectable={isConnectable} style={{ bottom: '-5px' }} />
