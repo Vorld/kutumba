@@ -14,7 +14,7 @@ import  { // Standard default import
   Edge,
   Position,
 } from '@xyflow/react';
-import dagre from 'dagre';
+import { stratify as d3Stratify, tree as d3Tree, HierarchyNode, HierarchyPointNode } from 'd3-hierarchy'; // Updated d3-hierarchy import
 
 import CustomNode from './CustomNode';
 import MarriageNode from './MarriageNode';
@@ -35,13 +35,16 @@ const nodeTypes = {
   marriage: MarriageNode,
 };
 
-const dagreGraph = new dagre.graphlib.Graph();
-dagreGraph.setDefaultEdgeLabel(() => ({}));
-
 const customNodeWidth = 180;
 const customNodeHeight = 100;
 const marriageNodeWidth = 50;
 const marriageNodeHeight = 50;
+
+interface StratifyInputData {
+  id: string;
+  parentId: string | null;
+  originalData?: FamilyTreeCustomNode; // Made originalData optional
+}
 
 const getLayoutedElements = (
   nodesToLayout: FamilyTreeCustomNode[],
@@ -49,40 +52,128 @@ const getLayoutedElements = (
   direction = 'TB'
 ): { nodes: FamilyTreeCustomNode[]; edges: Edge[] } => {
   const isHorizontal = direction === 'LR';
-  dagreGraph.setGraph({ rankdir: direction, nodesep: 70, ranksep: 70 });
 
-  nodesToLayout.forEach((node) => {
-    let width = customNodeWidth;
-    let height = customNodeHeight;
-    if (node.type === 'marriage') {
-      width = marriageNodeWidth;
-      height = marriageNodeHeight;
+  if (nodesToLayout.length === 0) {
+    return { nodes: [], edges: [] };
+  }
+
+  const nodeDataForStratify: StratifyInputData[] = nodesToLayout.map(n => ({
+    id: n.id,
+    parentId: null,
+    originalData: n,
+  }));
+
+  const nodeDataMap = new Map(nodeDataForStratify.map(n => [n.id, n]));
+
+  edgesToLayout.forEach(edge => {
+    const targetNode = nodeDataMap.get(edge.target);
+    const sourceNode = nodeDataMap.get(edge.source);
+
+    if (targetNode && sourceNode) {
+      // Prefer parent-child relationships for hierarchy if possible
+      // This logic might need to be more sophisticated depending on how parent/child is defined
+      // For now, if an edge exists, we assume source is parent of target for tree structure
+      // This will likely make marriage nodes children of one of the spouses in the D3 tree.
+      if (targetNode.parentId === null) {
+        targetNode.parentId = edge.source;
+      }
     }
-    dagreGraph.setNode(node.id, { width, height });
   });
 
-  edgesToLayout.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
-  });
+  // Identify potential roots (nodes with no parentId set yet)
+  let potentialRoots = nodeDataForStratify.filter(n => n.parentId === null);
 
-  dagre.layout(dagreGraph);
+  // If no roots found (e.g. circular dependencies or all nodes have parents),
+  // or multiple roots, we might need a strategy. For now, pick the first node if no explicit root.
+  if (potentialRoots.length === 0 && nodeDataForStratify.length > 0) {
+    // Fallback: if no node has parentId null, try to find a node that is not a target of any edge
+    const allTargetIds = new Set(edgesToLayout.map(e => e.target));
+    potentialRoots = nodeDataForStratify.filter(n => !allTargetIds.has(n.id));
+    if (potentialRoots.length === 0 && nodeDataForStratify.length > 0) { // If still no root, pick the first node as a last resort
+        const firstNodeAsRoot = nodeDataMap.get(nodeDataForStratify[0].id);
+        if (firstNodeAsRoot) firstNodeAsRoot.parentId = "__D3_VIRTUAL_ROOT__";
+        nodeDataForStratify.push({ id: "__D3_VIRTUAL_ROOT__", parentId: null }); // No originalData for virtual root
+        potentialRoots = nodeDataForStratify.filter(n => n.id === "__D3_VIRTUAL_ROOT__");
+    }
+  } else if (potentialRoots.length > 1) {
+    // If multiple roots, create a virtual root to connect them
+    const virtualRootId = "__D3_VIRTUAL_ROOT__";
+    nodeDataForStratify.push({ id: virtualRootId, parentId: null }); // No originalData for virtual root
+    potentialRoots.forEach(rootNode => {
+        const actualRootNode = nodeDataMap.get(rootNode.id);
+        if (actualRootNode) actualRootNode.parentId = virtualRootId;
+    });
+    potentialRoots = nodeDataForStratify.filter(n => n.id === virtualRootId); 
+  }
 
-  const layoutedNodes = nodesToLayout.map((node): FamilyTreeCustomNode => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    const position = {
-      x: nodeWithPosition.x - (node.type === 'marriage' ? marriageNodeWidth / 2 : customNodeWidth / 2),
-      y: nodeWithPosition.y - (node.type === 'marriage' ? marriageNodeHeight / 2 : customNodeHeight / 2),
+  let rootHierarchyNode: HierarchyNode<StratifyInputData>;
+  try {
+    const stratifyFunc = d3Stratify<StratifyInputData>()
+      .id(d => d.id)
+      .parentId(d => d.parentId);
+    rootHierarchyNode = stratifyFunc(nodeDataForStratify.filter(n => nodeDataMap.has(n.id) || n.id === "__D3_VIRTUAL_ROOT__"));
+  } catch (e) {
+    console.error("FamilyTree: Failed to stratify data for D3 layout. Check for cycles or parent issues.", e, nodeDataForStratify);
+    return {
+      nodes: nodesToLayout.map(n => ({
+        ...n,
+        position: n.position || { x: Math.random() * 500, y: Math.random() * 500 },
+        width: n.type === 'marriage' ? marriageNodeWidth : customNodeWidth,
+        height: n.type === 'marriage' ? marriageNodeHeight : customNodeHeight,
+      })),
+      edges: edgesToLayout,
     };
+  }
+
+  const treeLayout = d3Tree<StratifyInputData>();
+  const avgNodeW = customNodeWidth;
+  const avgNodeH = customNodeHeight;
+
+  if (isHorizontal) {
+    treeLayout.nodeSize([avgNodeH + 70, avgNodeW + 70]); // [height, width] for horizontal
+  } else {
+    treeLayout.nodeSize([avgNodeW + 70, avgNodeH + 70]); // [width, height] for vertical
+  }
+
+  const d3RootPointNode = treeLayout(rootHierarchyNode);
+
+  const layoutedNodesFromD3 = d3RootPointNode.descendants()
+    .filter(d3Node => d3Node.data.id !== "__D3_VIRTUAL_ROOT__") // Exclude virtual root
+    .map((d3Node: HierarchyPointNode<StratifyInputData>) => {
+    const originalNode = d3Node.data.originalData!; // Non-null assertion, as virtual root is filtered
+    const nodeW = originalNode.type === 'marriage' ? marriageNodeWidth : customNodeWidth;
+    const nodeH = originalNode.type === 'marriage' ? marriageNodeHeight : customNodeHeight;
+
+    let x, y;
+    if (isHorizontal) {
+      x = d3Node.y - nodeW / 2; // d3.tree uses x for depth, y for breadth in horizontal
+      y = d3Node.x - nodeH / 2;
+    } else {
+      x = d3Node.x - nodeW / 2; // d3.tree uses x for breadth, y for depth in vertical
+      y = d3Node.y - nodeH / 2;
+    }
 
     return {
-      ...node,
+      ...originalNode,
       targetPosition: isHorizontal ? Position.Left : Position.Top,
       sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
-      position,
+      position: { x, y },
+      width: nodeW,
+      height: nodeH,
     };
   });
 
-  return { nodes: layoutedNodes, edges: edgesToLayout };
+  const layoutedNodeMap = new Map(layoutedNodesFromD3.map(n => [n.id, n]));
+  const finalNodes = nodesToLayout.map(n => {
+    return layoutedNodeMap.get(n.id) || {
+        ...n,
+        position: n.position || { x: Math.random() * 200, y: Math.random() * 200 },
+        width: n.type === 'marriage' ? marriageNodeWidth : customNodeWidth,
+        height: n.type === 'marriage' ? marriageNodeHeight : customNodeHeight,
+    };
+  });
+
+  return { nodes: finalNodes, edges: edgesToLayout };
 };
 
 const FamilyTree: React.FC = () => {
