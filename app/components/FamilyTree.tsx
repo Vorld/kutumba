@@ -138,8 +138,8 @@ const FamilyTree: React.FC = () => {
               id: `edge-${person1_id}-${marriageNodeId}`,
               source: person1_id,
               target: marriageNodeId,
-              sourceHandle: 'spouseOutputRight',
-              targetHandle: 'spouseInputLeft',
+              sourceHandle: 'bottomOutput', 
+              targetHandle: 'spouseInputTop',
               type: 'smoothstep',
             });
 
@@ -147,8 +147,8 @@ const FamilyTree: React.FC = () => {
               id: `edge-${person2_id}-${marriageNodeId}`,
               source: person2_id,
               target: marriageNodeId,
-              sourceHandle: 'spouseOutputLeft',
-              targetHandle: 'spouseInputRight',
+              sourceHandle: 'bottomOutput', 
+              targetHandle: 'spouseInputTop',
               type: 'smoothstep',
             });
 
@@ -194,7 +194,17 @@ const FamilyTree: React.FC = () => {
             console.warn(`Marriage node not found for parents of child ${childId}: ${parentIds.join(', ')}`);
           }
         } else if (parentIds.length === 1) {
-             console.warn(`Child ${childId} has only one parent listed: ${parentIds[0]}. Cannot form a marriage link for parents.`);
+            // If a single parent, connect parent directly to child
+            const parentId = parentIds[0];
+            initialEdges.push({
+                id: `edge-${parentId}-${childId}`,
+                source: parentId, // Source is CustomNode (parent)
+                target: childId, // Target is CustomNode (child)
+                sourceHandle: 'bottomOutput', // From CustomNode's (parent) bottom
+                targetHandle: 'parentInput', // To CustomNode's (child) top
+                type: 'smoothstep',
+            });
+             console.warn(`Child ${childId} has only one parent listed: ${parentId}. Creating direct parent-child link.`);
         } else if (parentIds.length > 2) {
             console.warn(`Child ${childId} has more than two parents listed: ${parentIds.join(', ')}. This is unusual.`);
         }
