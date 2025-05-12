@@ -13,12 +13,14 @@ import {
   ConnectionLineType,
   Edge,
   Position,
+  NodeProps,
 } from '@xyflow/react';
 import ELK, { ElkNode } from 'elkjs/lib/elk.bundled.js';
 
 import CustomNode from './CustomNode';
 import MarriageNode from './MarriageNode';
 import AddPersonModal from './AddPersonModal';
+import EditPersonModal from './EditPersonModal';
 import { Person } from '../../types';
 import { FamilyTreeCustomNode, FamilyTreeNodeData } from '../../lib/utils';
 
@@ -31,10 +33,7 @@ interface ApiRelationship {
   relationship_type: 'parent' | 'spouse';
 }
 
-const nodeTypes = {
-  custom: CustomNode,
-  marriage: MarriageNode,
-};
+// We'll define nodeTypes in the component to have access to the onNodeClick handler
 
 const customNodeWidth = 180;
 const customNodeHeight = 100;
@@ -500,6 +499,8 @@ const FamilyTree: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [persons, setPersons] = useState<Person[]>([]);
 
   const fetchData = useCallback(async () => {
@@ -560,9 +561,68 @@ const FamilyTree: React.FC = () => {
       throw error;
     }
   };
+  
+  const handleNodeClick = (nodeId: string, nodeData: FamilyTreeNodeData) => {
+    // Only handle clicks on person nodes, not marriage nodes
+    if (nodeData.id) {
+      const person = persons.find(p => p.id === nodeData.id);
+      if (person) {
+        setSelectedPerson(person);
+        setIsEditModalOpen(true);
+      }
+    }
+  };
+  
+  const handleUpdatePerson = async (personData: Partial<Person>) => {
+    try {
+      const response = await fetch('/api/persons/update', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(personData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update person');
+      }
+
+      // Refresh the data to update the tree
+      await fetchData();
+    } catch (error) {
+      console.error('Error updating person:', error);
+      throw error;
+    }
+  };
+  
+  const handleDeletePerson = async (personId: string) => {
+    try {
+      const response = await fetch(`/api/persons/delete?id=${personId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete person');
+      }
+
+      // Refresh the data to update the tree
+      await fetchData();
+    } catch (error) {
+      console.error('Error deleting person:', error);
+      throw error;
+    }
+  };
 
   if (loading) return <div style={{ padding: 20 }}>Loading…</div>;
   if (error) return <div style={{ padding: 20, color: 'red' }}>{error}</div>;
+
+  // Define nodeTypes inside the component to have access to the handleNodeClick function
+  const nodeTypes = {
+    custom: (props: NodeProps) => <CustomNode {...props} onNodeClick={handleNodeClick} />,
+    marriage: MarriageNode,
+  };
 
   return (
     <div style={{ width: '100%', height: '100vh', position: 'relative' }}>
@@ -594,15 +654,24 @@ const FamilyTree: React.FC = () => {
           </svg>
           Add Family Member
         </button>
-      </ReactFlowProvider>
       
-      {/* Add Person Modal */}
-      <AddPersonModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onAddPerson={handleAddPerson}
-        existingPersons={persons}
-      />
+        {/* Add Person Modal */}
+        <AddPersonModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onAddPerson={handleAddPerson}
+          existingPersons={persons}
+        />
+      
+        {/* Edit Person Modal */}
+        <EditPersonModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          onUpdatePerson={handleUpdatePerson}
+          onDeletePerson={handleDeletePerson}
+          person={selectedPerson}
+        />
+      </ReactFlowProvider>
     </div>
   );
 };

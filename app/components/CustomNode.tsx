@@ -2,10 +2,23 @@
 
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react'; 
-import { FamilyTreeCustomNode } from '../../lib/utils'; 
+import { FamilyTreeNodeData } from '../../lib/utils'; 
 
-const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnectable }) => {
-  const { name, nickname, gender, birthday } = data;
+// This adds an onNodeClick prop to the standard node props
+interface CustomNodeProps extends NodeProps {
+  onNodeClick?: (nodeId: string, data: FamilyTreeNodeData) => void;
+}
+
+const CustomNode = ({ data, isConnectable, id, onNodeClick }: CustomNodeProps) => {
+  // Cast data to FamilyTreeNodeData to access the properties safely
+  const nodeData = data as FamilyTreeNodeData;
+  const { name, nickname, gender, birthday } = nodeData;
+  
+  const handleNodeClick = () => {
+    if (onNodeClick) {
+      onNodeClick(id, nodeData);
+    }
+  };
   
   return (
     <div
@@ -14,7 +27,7 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
         height: '100px', // Fixed height
         padding: '10px', // Adjusted padding
         borderRadius: '8px',
-        background: gender === 'male' ? '#lightblue' : gender === 'female' ? '#pink' : '#lightgray',
+        background: gender === 'male' ? 'lightblue' : gender === 'female' ? 'pink' : 'lightgray',
         border: '1px solid #555',
         textAlign: 'center',
         display: 'flex', // Added for centering content
@@ -22,8 +35,10 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
         justifyContent: 'center', // Added for centering content
         boxSizing: 'border-box', // Ensure padding and border are included in width/height
         overflow: 'hidden', // Hide overflow
+        cursor: 'pointer', // Show pointer cursor on hover
       }}
-      title={`Name: ${name}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${birthday ? new Date(birthday).toLocaleDateString() : 'N/A'}`}
+      onClick={handleNodeClick}
+      title={`Name: ${name || ''}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${birthday ? new Date(birthday).toLocaleDateString() : 'N/A'}\nClick to edit`}
     >
       <Handle type="target" position={Position.Top} id="parentInput" isConnectable={isConnectable} style={{ top: '-5px' }} />
       <Handle type="source" position={Position.Bottom} id="childOutput" isConnectable={isConnectable} style={{ bottom: '-5px' }} />
@@ -32,7 +47,7 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
       <Handle type="source" position={Position.Right} id="spouseOutputRight" isConnectable={isConnectable} style={{ right: '-5px' }} />
       <Handle type="target" position={Position.Right} id="spouseInputRight" isConnectable={isConnectable} style={{ right: '-5px' }} />
       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        <strong>{name}</strong>
+        <strong>{name || ''}</strong>
       </div>
       {nickname && (
         <div style={{ fontSize: '0.8em', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
