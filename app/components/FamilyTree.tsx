@@ -119,7 +119,7 @@ async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
       'elk.algorithm': 'layered',
       'elk.direction': 'DOWN',
       'elk.spacing.nodeNodeBetweenLayers': '80',  // Increased vertical spacing between generations
-      'elk.spacing.nodeNode': '40',               // Moderate spacing for better compactness
+      'elk.spacing.nodeNode': '150',               // Moderate spacing for better compactness
       'elk.layered.spacing.edgeNodeBetweenLayers': '40',
       'elk.edgeRouting': 'ORTHOGONAL',            // Use orthogonal routing for cleaner lines
       'elk.layered.unnecessaryBendpoints': 'true', // Remove unnecessary bendpoints
@@ -137,7 +137,13 @@ async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
       'elk.spacing.componentComponent': '80',     // Space between family subgraphs
       'elk.alignment': 'CENTER',                  // Center aligned nodes
       'elk.partitioning.activate': 'true',        // Activate partitioning for family groups
-      'elk.contentAlignment': 'V_CENTER,H_CENTER' // Align content centrally
+      'elk.contentAlignment': 'V_CENTER,H_CENTER', // Align content centrally
+      'elk.spacing.baseValue': '40',              // Base spacing value
+      'elk.layered.nodePlacement.linearSegments': 'true', // Improved segment handling
+      'elk.layered.considerModelOrder.strategy': 'PREFER_EDGES',  // Prioritize edge-based ordering
+      'elk.layered.highDegreeNodes.treatment': 'true', // Better handling of high-degree nodes like marriages
+      'elk.layered.spacing.nodeNodeBetweenLayers.upward': '80', // Control upward spacing
+      'elk.separateConnectedComponents': 'false' // Keep components together
     },
     children: nodes.map((n) => {
       const isMarriage = n.type === 'marriage';
@@ -149,6 +155,18 @@ async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
         Array.from(spouseGroups.values()).some(spouses => 
           spouses.includes(n.id)
         );
+
+      // Find if this node is part of a spouse group and which one
+      let spouseGroupId = '';
+      if (!isMarriage && isPartOfSpousePair) {
+        // Find which marriage node this person belongs to
+        for (const [marriageId, spouses] of spouseGroups.entries()) {
+          if (spouses.includes(n.id)) {
+            spouseGroupId = marriageId;
+            break;
+          }
+        }
+      }
 
       if (isMarriage) {
         return {
@@ -181,7 +199,8 @@ async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
             // If this person is part of a spouse pair, mark it to keep them together
             ...(isPartOfSpousePair ? { 
               'elk.layered.layering.layerConstraint': 'SAME_LAYER',
-              'elk.partitioning.partition': `family-${n.id}`
+              // Group spouses with their marriage node
+              'elk.partitioning.partition': spouseGroupId ? `family-${spouseGroupId}` : `family-${n.id}`,
             } : {}),
           },
           // Add label with name from the data for easier debugging
@@ -212,6 +231,8 @@ async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
             'elk.layered.nodePlacement.favoredPosition': 'SAME_LAYER',
             'elk.layered.layering.layerConstraint': 'SAME_LAYER', // Force nodes on same layer
             'elk.layered.compaction.groupCompactionStrategy': 'EDGE', // Group based on edges
+            'elk.bendpoints': '[{"x":0,"y":0}]', // Help with edge routing
+            'elk.layering.strategy': 'NETWORK_SIMPLEX', // Improved layer assignment for spouse edges
           } : {}),
           // For child edges, ensure proper parent-child hierarchical layout
           ...(isChildEdge ? {
@@ -277,107 +298,33 @@ async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
   });
   
   // Create a position map for quick access
-  const posMap = new Map(laidNodes.map(node => [node.id, node.position]));
-  
-  // First, make sure spouses are nicely aligned at same Y level
-  const spousePairs = new Map<string, string>(); // spouse1 -> spouse2
-  
-  // Create a map of spouse pairs for easy lookup
-  for (const connection of marriageConnections.values()) {
-    if (connection.spouses.length === 2) {
-      const [s1, s2] = connection.spouses;
-      spousePairs.set(s1, s2);
-      spousePairs.set(s2, s1);
-    }
-  }
-  
-  // Group nodes by their Y position to identify layers
-  const layerMap = new Map<number, string[]>();
-  
-  // First group nodes by their Y position (rounded to nearest 10)
-  laidNodes.forEach(node => {
-    if (node.type === 'custom') { // Only person nodes
-      const layerY = Math.round(node.position.y / 10) * 10;
-      if (!layerMap.has(layerY)) {
-        layerMap.set(layerY, []);
-      }
-      layerMap.get(layerY)!.push(node.id);
-    }
-  });
-  
-  // Create a copy of nodes that we'll modify
+    // Create a copy of nodes that we'll modify
+  // But we will ONLY adjust marriage nodes for aesthetic reasons
   const adjustedNodes = [...laidNodes];
   
-  // For each spouse pair, ensure they're at the same Y level
-  // and close enough horizontally
-  for (const [spouse1Id, spouse2Id] of spousePairs.entries()) {
-    const spouse1Node = adjustedNodes.find(n => n.id === spouse1Id);
-    const spouse2Node = adjustedNodes.find(n => n.id === spouse2Id);
-    
-    if (spouse1Node && spouse2Node) {
-      // Average Y position
-      const avgY = (spouse1Node.position.y + spouse2Node.position.y) / 2;
-      
-      // Ensure reasonable horizontal distance
-      const spouse1X = spouse1Node.position.x;
-      const spouse2X = spouse2Node.position.x;
-      
-      // Update positions in the copy
-      const s1Index = adjustedNodes.findIndex(n => n.id === spouse1Id);
-      const s2Index = adjustedNodes.findIndex(n => n.id === spouse2Id);
-      
-      if (s1Index !== -1 && s2Index !== -1) {
-        // Keep them at same Y level
-        adjustedNodes[s1Index] = {
-          ...adjustedNodes[s1Index],
-          position: {
-            ...adjustedNodes[s1Index].position,
-            y: avgY
-          }
-        };
-        
-        adjustedNodes[s2Index] = {
-          ...adjustedNodes[s2Index],
-          position: {
-            ...adjustedNodes[s2Index].position,
-            y: avgY
-          }
-        };
-        
-        // Update position map
-        posMap.set(spouse1Id, { x: spouse1X, y: avgY });
-        posMap.set(spouse2Id, { x: spouse2X, y: avgY });
-      }
-    }
-  }
-  
-  // Position marriage nodes optimally between their spouses
+  // ONLY make aesthetic adjustments to marriage nodes
+  // Center marriage nodes between their spouses for visual clarity
   const marriageAdjustedNodes = adjustedNodes.map(node => {
     if (node.type === 'marriage') {
       const connection = marriageConnections.get(node.id);
       if (connection && connection.spouses.length === 2) {
         const [spouse1Id, spouse2Id] = connection.spouses;
-        const spouse1Pos = posMap.get(spouse1Id);
-        const spouse2Pos = posMap.get(spouse2Id);
         
-        if (spouse1Pos && spouse2Pos) {
-          // Calculate the midpoint between spouses
-          const midX = (spouse1Pos.x + spouse2Pos.x) / 2;
+        // Find the spouse nodes using original ELK positions
+        const spouse1Node = laidNodes.find(n => n.id === spouse1Id);
+        const spouse2Node = laidNodes.find(n => n.id === spouse2Id);
+        
+        if (spouse1Node && spouse2Node) {
+          // Calculate the midpoint between spouses for horizontal positioning
+          const midX = (spouse1Node.position.x + spouse2Node.position.x) / 2;
           
-          // Position marriage node between spouses but closer to their level
-          const spouseY = spouse1Pos.y;
-          const liftedY = spouseY + 100; // Position marriage node below spouses
-          
-          // Update position map for marriage node
-          const newPosition = {
-            x: midX + 85, // Center between spouses
-            y: liftedY
-          };
-          posMap.set(node.id, newPosition);
-          
+          // Keep marriage node at its ELK Y position but center it horizontally
           return {
             ...node,
-            position: newPosition
+            position: {
+              x: midX + 85, // Center horizontally only
+              y: node.position.y // Keep ELK's vertical positioning
+            }
           };
         }
       }
@@ -385,252 +332,15 @@ async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
     return node;
   });
 
-  // Final step: Improve child positioning to ensure proper alignment under parents
-  // Create a map to store parents for each child
-  const childToParentsMap = new Map<string, string[]>();
-  
-  // Map children to their parents (either marriage nodes or single parents)
-  edges.forEach(edge => {
-    if (edge.targetHandle === 'parentInput') {
-      // This is a child edge
-      const childId = edge.target;
-      const parentId = edge.source;
-      
-      if (!childToParentsMap.has(childId)) {
-        childToParentsMap.set(childId, []);
-      }
-      childToParentsMap.get(childId)!.push(parentId);
-    }
-  });
-  
-  // Group children by their parents
-  const parentChildrenMap = new Map<string, string[]>();
-  
-  // Collect children for each parent/marriage node
-  childToParentsMap.forEach((parentIds, childId) => {
-    // In most cases this will be a single parent (marriage node or individual)
-    parentIds.forEach(parentId => {
-      if (!parentChildrenMap.has(parentId)) {
-        parentChildrenMap.set(parentId, []);
-      }
-      parentChildrenMap.get(parentId)!.push(childId);
-    });
-  });
-  
-  // Create the final node positions with balanced child positioning
-  const finalNodes = marriageAdjustedNodes.map(node => {
-    // Only adjust child nodes
-    if (node.type === 'custom' && childToParentsMap.has(node.id)) {
-      const parentIds = childToParentsMap.get(node.id) || [];
-      
-      // If this child has parents, try to center it under them
-      if (parentIds.length > 0) {
-        // Calculate parent positions
-        const parentPositions = parentIds
-          .map(pid => posMap.get(pid))
-          .filter(pos => pos !== undefined) as {x: number, y: number}[];
-          
-        if (parentPositions.length > 0) {
-          // Find the horizontal center of the parents
-          const totalX = parentPositions.reduce((sum, pos) => sum + pos.x, 0);
-          const centerX = totalX / parentPositions.length;
-          
-          // Siblings should be arranged side by side
-          const siblings = parentIds.flatMap(pid => parentChildrenMap.get(pid) || []);
-          
-          if (siblings.length > 1) {
-            // This is part of a sibling group
-            // Find position in sibling group (0-indexed)
-            const siblingIndex = siblings.indexOf(node.id);
-            
-            if (siblingIndex !== -1) {
-              // Calculate offset based on position in sibling group
-              const siblingOffset = (siblingIndex - (siblings.length - 1) / 2) * (customNodeWidth + 20);
-              
-              // Center under parents with offset
-              return {
-                ...node,
-                position: {
-                  x: centerX - (customNodeWidth / 2) + siblingOffset,
-                  y: node.position.y // Keep Y position
-                }
-              };
-            }
-          } else {
-            // Single child - center it under parents
-            return {
-              ...node,
-              position: {
-                x: centerX - (customNodeWidth / 2),
-                y: node.position.y // Keep Y position
-              }
-            };
-          }
-        }
-      }
-    }
-    return node;
-  });
-
-  // Perform a final optimization pass to fix any remaining layout issues
-  const optimizedNodes = optimizeLayout(finalNodes, edges);
-  
-  return { nodes: optimizedNodes, edges };
+  // No manual adjustments to any nodes except the minimal aesthetic adjustment to marriage nodes
+  // This ensures we fully rely on ELK for the layout
+  return { nodes: marriageAdjustedNodes, edges };
 
 }
 
 /* --------------------------------------------------
- *  Final layout optimization function
- *  This fixes any remaining issues with the layout
+ *  Build React‑Flow graph from API
  * ------------------------------------------------*/
-function optimizeLayout(nodes: FamilyTreeCustomNode[], edges: Edge[]): FamilyTreeCustomNode[] {
-  // Create a map of marriage nodes and their associated person nodes
-  const marriageMap = new Map<string, {
-    marriageNode: FamilyTreeCustomNode,
-    spouses: FamilyTreeCustomNode[],
-    children: FamilyTreeCustomNode[]
-  }>();
-  
-  // Find all marriage nodes
-  const marriageNodes = nodes.filter(n => n.type === 'marriage');
-  
-  // Process each marriage node
-  marriageNodes.forEach(marriageNode => {
-    // Find spouse edges for this marriage node
-    const spouseEdges = edges.filter(e => 
-      e.target === marriageNode.id && 
-      (e.targetHandle === 'left' || e.targetHandle === 'right')
-    );
-    
-    // Find child edges from this marriage node
-    const childEdges = edges.filter(e => 
-      e.source === marriageNode.id && 
-      e.sourceHandle === 'down'
-    );
-    
-    // Find the actual nodes
-    const spouseNodes = spouseEdges
-      .map(e => nodes.find(n => n.id === e.source))
-      .filter(Boolean) as FamilyTreeCustomNode[];
-      
-    const childNodes = childEdges
-      .map(e => nodes.find(n => n.id === e.target))
-      .filter(Boolean) as FamilyTreeCustomNode[];
-    
-    if (spouseNodes.length === 2) {
-      marriageMap.set(marriageNode.id, {
-        marriageNode,
-        spouses: spouseNodes,
-        children: childNodes
-      });
-    }
-  });
-  
-  // Create a copy of the nodes to modify
-  const optimizedNodes = [...nodes];
-  
-  // Fix spouse positioning - ensure they're horizontally adjacent
-  marriageMap.forEach(({ marriageNode, spouses }) => {
-    if (spouses.length === 2) {
-      // Find the indices of these nodes
-      const m1Index = optimizedNodes.findIndex(n => n.id === spouses[0].id);
-      const m2Index = optimizedNodes.findIndex(n => n.id === spouses[1].id);
-      const marriageIndex = optimizedNodes.findIndex(n => n.id === marriageNode.id);
-      
-      if (m1Index !== -1 && m2Index !== -1 && marriageIndex !== -1) {
-        // Calculate positions
-        const spouse1 = optimizedNodes[m1Index];
-        const spouse2 = optimizedNodes[m2Index];
-        
-        // Adjust horizontal positions if they're too far apart
-        const idealSpacing = customNodeWidth + 40; // Ideal spacing between spouses
-        const currentSpacing = Math.abs(spouse2.position.x - spouse1.position.x);
-        
-        if (currentSpacing > idealSpacing) {
-          // They're too far apart - bring them closer
-          const centerX = (spouse1.position.x + spouse2.position.x) / 2;
-          const newSpacing = idealSpacing / 2;
-          
-          // Update positions
-          optimizedNodes[m1Index] = {
-            ...spouse1,
-            position: {
-              x: centerX - newSpacing - customNodeWidth / 2,
-              y: spouse1.position.y
-            }
-          };
-          
-          optimizedNodes[m2Index] = {
-            ...spouse2,
-            position: {
-              x: centerX + newSpacing - customNodeWidth / 2,
-              y: spouse2.position.y
-            }
-          };
-          
-          // Reposition marriage node
-          optimizedNodes[marriageIndex] = {
-            ...marriageNode,
-            position: {
-              x: centerX - marriageNodeWidth / 2,
-              y: marriageNode.position.y
-            }
-          };
-        }
-      }
-    }
-  });
-  
-  // Ensure children are properly centered under parents
-  // Use the marriage node as the central point for children alignment
-  marriageMap.forEach(({ marriageNode, children }) => {
-    if (children.length > 0) {
-      const marriagePos = marriageNode.position;
-      
-      // For multiple children, arrange them symmetrically around the center
-      if (children.length > 1) {
-        const totalWidth = children.length * customNodeWidth;
-        const spacing = 30; // Space between siblings
-        const totalSpacing = (children.length - 1) * spacing;
-        const totalGroupWidth = totalWidth + totalSpacing;
-        const startX = marriagePos.x - totalGroupWidth / 2 + customNodeWidth / 2;
-        
-        // Sort children by their current X position to maintain relative ordering
-        const sortedChildren = [...children].sort((a, b) => 
-          a.position.x - b.position.x
-        );
-        
-        // Position each child
-        sortedChildren.forEach((child, index) => {
-          const childIndex = optimizedNodes.findIndex(n => n.id === child.id);
-          if (childIndex !== -1) {
-            optimizedNodes[childIndex] = {
-              ...child,
-              position: {
-                x: startX + index * (customNodeWidth + spacing),
-                y: child.position.y
-              }
-            };
-          }
-        });
-      } else if (children.length === 1) {
-        // Single child - center directly under marriage node
-        const childIndex = optimizedNodes.findIndex(n => n.id === children[0].id);
-        if (childIndex !== -1) {
-          optimizedNodes[childIndex] = {
-            ...children[0],
-            position: {
-              x: marriagePos.x - customNodeWidth / 2 + marriageNodeWidth / 2,
-              y: children[0].position.y
-            }
-          };
-        }
-      }
-    }
-  });
-  
-  return optimizedNodes;
-}
 
 /* --------------------------------------------------
  *  Build React‑Flow graph from API
