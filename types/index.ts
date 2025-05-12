@@ -5,24 +5,85 @@
  */
 
 
+// export interface Person {
+//   id: string;           // UUID
+//   name: string;         // Full name
+//   nickname?: string;    // Optional nickname
+//   birthday?: string;    // Date in ISO format (YYYY-MM-DD)
+//   gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
+//   date_of_death?: string; // Date in ISO format (YYYY-MM-DD)
+//   location?: string;    // Current or last known location
+//   created_at: string;   // Timestamp
+//   updated_at: string;   // Timestamp
+  
+//   // Family relationships
+//   parent_ids?: string[];  // List of parent IDs
+//   spouse_id?: string;     // ID of the spouse
+  
+//   // Admin fields
+//   flagged_for_deletion?: boolean; // Whether this person is flagged for deletion
+// }
+
+/* ─────────── shared/types.ts ─────────── */
+
+export type Gender =
+  | 'male'
+  | 'female'
+  | 'other'
+  | 'prefer_not_to_say';
+
+/** Mirrors the `persons` table */
 export interface Person {
-  id: string;           // UUID
-  name: string;         // Full name
-  nickname?: string;    // Optional nickname
-  birthday?: string;    // Date in ISO format (YYYY-MM-DD)
-  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
-  date_of_death?: string; // Date in ISO format (YYYY-MM-DD)
-  location?: string;    // Current or last known location
-  created_at: string;   // Timestamp
-  updated_at: string;   // Timestamp
-  
-  // Family relationships
-  parent_ids?: string[];  // List of parent IDs
-  spouse_id?: string;     // ID of the spouse
-  
-  // Admin fields
-  flagged_for_deletion?: boolean; // Whether this person is flagged for deletion
+  /** UUID primary key */
+  id: string;
+
+  /** Full legal name */
+  name: string;
+
+  /** Optional nickname or preferred short name */
+  nickname?: string | null;
+
+  /** ISO-8601 date string (YYYY-MM-DD) */
+  birthday?: string | null;
+
+  gender?: Gender | null;
+
+  /** ISO-8601 date string when deceased, else null */
+  date_of_death?: string | null;
+
+  /** Free-text location (city / country) */
+  location?: string | null;
+
+  /** Timestamps (optional on the client) */
+  created_at?: string;   // 2025-05-12T10:23:45.123Z
+  updated_at?: string;
+  flagged_for_deletion?: boolean;
 }
+
+/** Relationship rows flowing exactly as stored in the DB */
+export type RelationshipType = 'parent' | 'child' | 'spouse';
+
+export interface Relationship {
+  /** UUID primary key */
+  id: string;
+
+  /** First person in the dyad (direction depends on `relationship_type`) */
+  person1_id: string;
+
+  /** Second person in the dyad */
+  person2_id: string;
+
+  /**
+   *  • 'parent'  – person1 is **parent** of person2  
+   *  • 'child'   – person1 is **child**  of person2  
+   *  • 'spouse'  – unordered marriage link
+   */
+  relationship_type: RelationshipType;
+
+  /** Timestamps (optional on the client) */
+  created_at?: string;
+}
+
 
 /**
  * Interface for storing shared password
