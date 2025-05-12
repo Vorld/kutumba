@@ -157,13 +157,15 @@ const AddPersonModal: React.FC<AddPersonModalProps> = ({
               <option value="none">No relationship (root person)</option>
               <option value="spouse">Spouse of existing person</option>
               <option value="child">Child of existing person</option>
+              <option value="parent">Parent of existing person</option>
             </select>
           </div>
           
           {relationshipType !== 'none' && (
             <div className="mb-4">
               <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="relatedPerson">
-                {relationshipType === 'spouse' ? 'Spouse of' : 'Child of'}
+                {relationshipType === 'spouse' ? 'Spouse of' : 
+                 relationshipType === 'child' ? 'Child of' : 'Parent of'}
               </label>
               <select
                 id="relatedPerson"
@@ -180,11 +182,17 @@ const AddPersonModal: React.FC<AddPersonModalProps> = ({
                 ))}
               </select>
               
-              {/* Help text for child relationship */}
+              {/* Help text for relationships */}
               {relationshipType === 'child' && (
                 <p className="mt-2 text-sm text-gray-500">
                   If this person has two parents and one parent is the spouse of the selected person, 
                   both parent relationships will be automatically created.
+                </p>
+              )}
+              {relationshipType === 'parent' && (
+                <p className="mt-2 text-sm text-gray-500">
+                  This will add the new person as a parent of the selected person. If the selected person
+                  already has a parent of the same gender, you may want to add as a spouse instead.
                 </p>
               )}
             </div>

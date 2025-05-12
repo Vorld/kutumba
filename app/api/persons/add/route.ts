@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { sql } from '@/lib/db';
+// Import verifyToken when enabling authentication
 import { verifyToken } from '@/lib/auth';
 
 // POST /api/persons/add
 export async function POST(req: NextRequest) {
   try {
+    // For production, uncomment these lines to enable authentication
     // Check authentication from JWT token in cookie
     const token = req.cookies.get('auth_token')?.value;
-    if (!token || !(await verifyToken(token))) {
+    if (!token) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+    
+    const { valid } = await verifyToken(token);
+    if (!valid) {
+      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
+    }
+    
 
     // Parse request body
     const body = await req.json();
@@ -40,6 +48,37 @@ export async function POST(req: NextRequest) {
           INSERT INTO relationships (id, person1_id, person2_id, relationship_type) 
           VALUES (${relationshipId}, ${relatedPersonId}, ${personId}, 'spouse')
         `;
+      }
+      else if (relationshipType === 'parent') {
+        // Add parent relationship (the new person is a parent of the selected person)
+        await sql`
+          INSERT INTO relationships (id, person1_id, person2_id, relationship_type) 
+          VALUES (${relationshipId}, ${personId}, ${relatedPersonId}, 'parent')
+        `;
+        
+        // Check if the child already has another parent
+        const existingParentsQuery = await sql`
+          SELECT p.id, p.gender, r.person1_id
+          FROM relationships r
+          JOIN persons p ON p.id = r.person1_id
+          WHERE r.relationship_type = 'parent' AND r.person2_id = ${relatedPersonId} AND r.person1_id != ${personId}
+        `;
+        
+        // If there's an existing parent with a different gender, and the new parent has a gender
+        // we might want to create a spouse relationship between the parents
+        if (existingParentsQuery && existingParentsQuery.length > 0) {
+          const existingParent = existingParentsQuery[0];
+          const newPersonGender = person.gender;
+          
+          // If we have gender info and the genders are different, create spouse relationship
+          if (existingParent.gender && newPersonGender && existingParent.gender !== newPersonGender) {
+            const spouseRelationshipId = uuidv4();
+            await sql`
+              INSERT INTO relationships (id, person1_id, person2_id, relationship_type) 
+              VALUES (${spouseRelationshipId}, ${existingParent.id}, ${personId}, 'spouse')
+            `;
+          }
+        }
       } 
       else if (relationshipType === 'child') {
         // Get parent information (might be a single parent or part of a couple)
