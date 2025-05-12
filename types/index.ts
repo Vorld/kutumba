@@ -26,11 +26,11 @@
 
 /* ─────────── shared/types.ts ─────────── */
 
-export type Gender =
-  | 'male'
-  | 'female'
-  | 'other'
-  | 'prefer_not_to_say';
+// export type Gender =
+//   | 'male'
+//   | 'female'
+//   | 'other'
+//   | 'prefer_not_to_say';
 
 /** Mirrors the `persons` table */
 export interface Person {
@@ -46,7 +46,7 @@ export interface Person {
   /** ISO-8601 date string (YYYY-MM-DD) */
   birthday?: string | null;
 
-  gender?: Gender | null;
+  gender?: string | null;
 
   /** ISO-8601 date string when deceased, else null */
   date_of_death?: string | null;

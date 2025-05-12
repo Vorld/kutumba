@@ -18,6 +18,7 @@ import ELK, { ElkNode } from 'elkjs/lib/elk.bundled.js';
 
 import CustomNode from './CustomNode';
 import MarriageNode from './MarriageNode';
+import AddPersonModal from './AddPersonModal';
 import { Person } from '../../types';
 import { FamilyTreeCustomNode, FamilyTreeNodeData } from '../../lib/utils';
 
@@ -27,7 +28,7 @@ interface ApiRelationship {
   id: string;
   person1_id: string;
   person2_id: string;
-  relationship_type: 'parent' | 'child' | 'spouse';
+  relationship_type: 'parent' | 'spouse';
 }
 
 const nodeTypes = {
@@ -129,7 +130,7 @@ async function runELK(nodes: FamilyTreeCustomNode[], edges: Edge[]) {
       'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP', // Better for family trees
       'elk.layered.mergeEdges': 'false',
       'elk.layered.nodePlacement.bk.fixedAlignment': 'BALANCED', // Better aligned nodes
-      'elk.layered.thoroughness': '10',           // Higher thoroughness for better quality
+      'elk.layered.thoroughness': '100',           // Higher thoroughness for better quality
       'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF', // Better for family relations
       'elk.layered.considerModelOrder': 'true',   // Respect order from construction
       'elk.layered.compaction.connectedComponents': 'true', // Keep families together
@@ -422,7 +423,6 @@ function buildGraph(persons: Person[], rels: ApiRelationship[]) {
   rels.forEach((r) => {
     let child: string | undefined; let parent: string | undefined;
     if (r.relationship_type === 'parent') { parent = r.person1_id; child = r.person2_id; }
-    else if (r.relationship_type === 'child') { child = r.person1_id; parent = r.person2_id; }
     if (child && parent) {
       if (!childParents.has(child)) childParents.set(child, []);
       if (!childParents.get(child)!.includes(parent)) childParents.get(child)!.push(parent);
@@ -499,29 +499,73 @@ const FamilyTree: React.FC = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [persons, setPersons] = useState<Person[]>([]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [pRes, rRes] = await Promise.all([fetch('/api/persons'), fetch('/api/relationships/all')]);
+      if (!pRes.ok || !rRes.ok) throw new Error('Fetch failed');
+      const fetchedPersons: Person[] = await pRes.json();
+      const rels: ApiRelationship[] = await rRes.json();
+      
+      setPersons(fetchedPersons);
+      
+      const raw = buildGraph(fetchedPersons, rels);
+      const laid = await runELK(raw.nodes, raw.edges);
+      setNodes(laid.nodes); 
+      setEdges(laid.edges);
+    } catch (e) { 
+      setError((e as Error).message); 
+    }
+    finally { 
+      setLoading(false); 
+    }
+  }, [setNodes, setEdges, setPersons, setError, setLoading]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const [pRes, rRes] = await Promise.all([fetch('/api/persons'), fetch('/api/relationships/all')]);
-        if (!pRes.ok || !rRes.ok) throw new Error('Fetch failed');
-        const persons: Person[] = await pRes.json();
-        const rels: ApiRelationship[] = await rRes.json();
-        const raw = buildGraph(persons, rels);
-        const laid = await runELK(raw.nodes, raw.edges);
-        setNodes(laid.nodes); setEdges(laid.edges);
-      } catch (e) { setError((e as Error).message); }
-      finally { setLoading(false); }
-    })();
-  }, [setNodes, setEdges]);
+    fetchData();
+  }, [fetchData]);
 
   const onConnect = useCallback((p: Connection | Edge) => setEdges((eds) => addEdge(p, eds)), [setEdges]);
+
+  const handleAddPerson = async (
+    personData: Partial<Person>, 
+    relationshipType: string, 
+    relatedPersonId: string | null
+  ) => {
+    try {
+      const response = await fetch('/api/persons/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          person: personData,
+          relationshipType,
+          relatedPersonId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add person');
+      }
+
+      // Refresh the data to update the tree
+      await fetchData();
+    } catch (error) {
+      console.error('Error adding person:', error);
+      throw error;
+    }
+  };
 
   if (loading) return <div style={{ padding: 20 }}>Loading…</div>;
   if (error) return <div style={{ padding: 20, color: 'red' }}>{error}</div>;
 
   return (
-    <div style={{ width: '100%', height: '100vh' }}>
+    <div style={{ width: '100%', height: '100vh', position: 'relative' }}>
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
@@ -539,7 +583,26 @@ const FamilyTree: React.FC = () => {
           <Controls />
           <Background />
         </ReactFlow>
+        
+        {/* Add Person Button */}
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="absolute top-4 right-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-md z-10 flex items-center gap-2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+          </svg>
+          Add Family Member
+        </button>
       </ReactFlowProvider>
+      
+      {/* Add Person Modal */}
+      <AddPersonModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onAddPerson={handleAddPerson}
+        existingPersons={persons}
+      />
     </div>
   );
 };
