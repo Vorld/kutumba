@@ -9,8 +9,8 @@ const MarriageNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ isConnectable
   return (
     <div
       style={{
-        width: '40px', // Reduced size
-        height: '40px', // Reduced size
+        width: '10px', // Reduced size
+        height: '10px', // Reduced size
         borderRadius: '50%',
         background: '#888', // Slightly lighter background
         border: '1.5px solid #555', // Thinner border
