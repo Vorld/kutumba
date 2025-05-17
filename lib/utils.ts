@@ -19,6 +19,7 @@ export interface FamilyTreeNodeData extends Record<string, unknown> {
   nickname?: string | null;
   birthday?: string | null;
   gender?: Person['gender'];
+  color?: string; // Optional: for marriage node color
   // Add other specific fields from Person if they are needed in the node data
   // For example: location?: string;
   // Add index signature to allow any other properties, satisfying Record<string, unknown>

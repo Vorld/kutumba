@@ -4,15 +4,18 @@ import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { FamilyTreeCustomNode } from '@/lib/utils';
 
-const MarriageNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ isConnectable }) => {
+const MarriageNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnectable }) => {
   // data prop is available if needed for future use (e.g., displaying marriage date)
+  // The type for `data` will be FamilyTreeCustomNode['data'], which is FamilyTreeNodeData
+  // Accessing data.color should be fine if FamilyTreeNodeData includes an optional color property.
+  const nodeColor = (data as any)?.color || '#888'; 
   return (
     <div
       style={{
         width: '10px', // Reduced size
         height: '10px', // Reduced size
         borderRadius: '50%',
-        background: '#888', // Slightly lighter background
+        background: nodeColor, 
         border: '1.5px solid #555', // Thinner border
         display: 'flex',
         justifyContent: 'center',

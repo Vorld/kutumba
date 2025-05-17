@@ -7,6 +7,20 @@ import { FamilyTreeCustomNode } from '../../lib/utils';
 const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnectable }) => {
   const { name, nickname, gender, birthday } = data;
   
+  // Set background based on gender
+  const getBackgroundColor = () => {
+    if (gender === 'male') return '#e7e5e4'; // stone-200 (light)
+    if (gender === 'female') return '#44403c'; // stone-700 (dark)
+    return '#a8a29e'; // stone-400 (medium for unknown/other)
+  };
+  
+  // Set text color based on gender
+  const getTextColor = () => {
+    if (gender === 'male') return '#44403c'; // stone-700 for light background
+    if (gender === 'female') return '#fafaf9'; // stone-50 for dark background
+    return '#292524'; // stone-900 for medium background
+  };
+  
   return (
     <div 
       style={{
@@ -15,8 +29,10 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
         boxSizing: 'border-box',
         padding: '10px 20px',
         borderRadius: '8px',
-        background: gender === 'male' ? '#lightblue' : gender === 'female' ? '#pink' : '#lightgray',
-        border: '1px solid #555',
+        background: getBackgroundColor(),
+        border: '1px solid #78716c', // stone-500 border for all
+        color: getTextColor(),
+        boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
         textAlign: 'center',
         display: 'flex',
         flexDirection: 'column',
@@ -27,17 +43,18 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
       title={`Name: ${name}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${birthday ? new Date(birthday).toLocaleDateString() : 'N/A'}`}
     >
       <Handle type="target" position={Position.Top} id="parentInput" isConnectable={isConnectable} style={{ top: '-5px' }} />
-      {/* Original childOutput and spouseOutputBottom handles are replaced by a single bottomOutput handle */}
-      {/* <Handle type="source" position={Position.Bottom} id="childOutput" isConnectable={isConnectable} style={{ bottom: '-5px', left: '25%' }} /> */}
-      {/* <Handle type="source" position={Position.Bottom} id="spouseOutputBottom" isConnectable={isConnectable} style={{ bottom: '-5px', left: '75%'}} /> */}
-
-      {/* Single handle for all outgoing connections from the bottom (e.g., to marriage node as spouse, or to children as parent) */}
+      {/* Single handle for all outgoing connections from the bottom */}
       <Handle type="source" position={Position.Bottom} id="bottomOutput" isConnectable={isConnectable} style={{ bottom: '-5px' }} />
-      <div>
-        <strong>{name}</strong>
+      <div style={{ fontWeight: 'bold' }}>
+        {name}
       </div>
+      {nickname && (
+        <div style={{ fontSize: '0.9em', opacity: 0.8, marginTop: '-2px' }}>
+          &apos;{nickname}&apos;
+        </div>
+      )}
       {birthday && (
-        <div style={{ fontSize: '0.8em', color: '#333' }}>
+        <div style={{ fontSize: '0.8em', opacity: 0.9, marginTop: '4px' }}>
           Born: {new Date(birthday).toLocaleDateString()}
         </div>
       )}

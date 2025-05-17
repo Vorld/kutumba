@@ -23,6 +23,16 @@ import { FamilyTreeCustomNode, FamilyTreeNodeData } from '../../lib/utils';
 
 import '@xyflow/react/dist/style.css';
 
+// Helper function to generate a random hex color
+const getRandomColor = () => {
+  const letters = '0123456789ABCDEF';
+  let color = '#';
+  for (let i = 0; i < 6; i++) {
+    color += letters[Math.floor(Math.random() * 16)];
+  }
+  return color;
+};
+
 interface ApiRelationship {
   id: string;
   person1_id: string;
@@ -82,9 +92,9 @@ const getLayoutedElements = (
           const dummyId = `dummy-marriage-${node.id}-${dummyIdx++}`;
           dagreGraph.setNode(dummyId, { width: 1, height: 1 });
           spouseEdges.forEach((edge) => {
-            dagreGraph.setEdge(edge.source, dummyId, { minlen: 1, weight: 4 });
+            dagreGraph.setEdge(edge.source, dummyId, { minlen: 1, weight: 5 });
           });
-          dagreGraph.setEdge(dummyId, node.id, { minlen: 1, weight: 4 });
+          dagreGraph.setEdge(dummyId, node.id, { minlen: 1, weight: 5 });
         }
       }
     }
@@ -92,52 +102,52 @@ const getLayoutedElements = (
 
   // --- Sibling adjacency for leaf nodes (no children, no spouses) ---
   // Find all nodes that are not marriage nodes, have no children, and have no spouse edges
-  const nodeIdToNode = Object.fromEntries(nodesToLayout.map(n => [n.id, n]));
-  // Find all parent-child edges
-  const parentChildEdges = edgesToLayout.filter(e =>
-    (e.source.startsWith('marriage-') || nodeIdToNode[e.source]?.type === 'custom') &&
-    nodeIdToNode[e.target]?.type === 'custom' &&
-    e.source !== e.target
-  );
-  // Build a map from parent to children
-  const parentToChildren: Record<string, string[]> = {};
-  parentChildEdges.forEach(e => {
-    if (!parentToChildren[e.source]) parentToChildren[e.source] = [];
-    parentToChildren[e.source].push(e.target);
-  });
-  // Find all nodes that are not marriage nodes, have no children, and have no spouse edges
-  const leafNodes = nodesToLayout.filter(node => {
-    if (node.type !== 'custom') return false;
-    // No outgoing parent-child edge
-    const hasChildren = parentChildEdges.some(e => e.source === node.id);
-    // No spouse edge
-    const hasSpouse = edgesToLayout.some(e => e.source === node.id && nodeIdToNode[e.target]?.type === 'marriage');
-    return !hasChildren && !hasSpouse;
-  });
-  // Group leaf nodes by parent
-  const parentToLeafSiblings: Record<string, string[]> = {};
-  leafNodes.forEach(node => {
-    // Find parents (edges where this node is the target)
-    const parentEdges = parentChildEdges.filter(e => e.target === node.id);
-    parentEdges.forEach(e => {
-      if (!parentToLeafSiblings[e.source]) parentToLeafSiblings[e.source] = [];
-      parentToLeafSiblings[e.source].push(node.id);
-    });
-  });
-  // For each group of leaf siblings, add a dummy node, connect parent to dummy, and all siblings to dummy
-  let siblingDummyIdx = 0;
-  Object.entries(parentToLeafSiblings).forEach(([parentId, siblingIds]) => {
-    if (siblingIds.length > 1) {
-      const dummyId = `dummy-siblings-${siblingDummyIdx++}`;
-      dagreGraph.setNode(dummyId, { width: 1, height: 1 });
-      // Connect parent to dummy node (strongly)
-      dagreGraph.setEdge(parentId, dummyId, { minlen: 0, weight: 10 });
-      // Connect all siblings to dummy node (strongly)
-      siblingIds.forEach((siblingId: string) => {
-        dagreGraph.setEdge(dummyId, siblingId, { minlen: 0, weight: 10 });
-      });
-    }
-  });
+  // const nodeIdToNode = Object.fromEntries(nodesToLayout.map(n => [n.id, n]));
+  // // Find all parent-child edges
+  // const parentChildEdges = edgesToLayout.filter(e =>
+  //   (e.source.startsWith('marriage-') || nodeIdToNode[e.source]?.type === 'custom') &&
+  //   nodeIdToNode[e.target]?.type === 'custom' &&
+  //   e.source !== e.target
+  // );
+  // // Build a map from parent to children
+  // const parentToChildren: Record<string, string[]> = {};
+  // parentChildEdges.forEach(e => {
+  //   if (!parentToChildren[e.source]) parentToChildren[e.source] = [];
+  //   parentToChildren[e.source].push(e.target);
+  // });
+  // // Find all nodes that are not marriage nodes, have no children, and have no spouse edges
+  // const leafNodes = nodesToLayout.filter(node => {
+  //   if (node.type !== 'custom') return false;
+  //   // No outgoing parent-child edge
+  //   const hasChildren = parentChildEdges.some(e => e.source === node.id);
+  //   // No spouse edge
+  //   const hasSpouse = edgesToLayout.some(e => e.source === node.id && nodeIdToNode[e.target]?.type === 'marriage');
+  //   return !hasChildren && !hasSpouse;
+  // });
+  // // Group leaf nodes by parent
+  // const parentToLeafSiblings: Record<string, string[]> = {};
+  // leafNodes.forEach(node => {
+  //   // Find parents (edges where this node is the target)
+  //   const parentEdges = parentChildEdges.filter(e => e.target === node.id);
+  //   parentEdges.forEach(e => {
+  //     if (!parentToLeafSiblings[e.source]) parentToLeafSiblings[e.source] = [];
+  //     parentToLeafSiblings[e.source].push(node.id);
+  //   });
+  // });
+  // // For each group of leaf siblings, add a dummy node, connect parent to dummy, and all siblings to dummy
+  // let siblingDummyIdx = 0;
+  // Object.entries(parentToLeafSiblings).forEach(([parentId, siblingIds]) => {
+  //   if (siblingIds.length > 1) {
+  //     const dummyId = `dummy-siblings-${siblingDummyIdx++}`;
+  //     dagreGraph.setNode(dummyId, { width: 1, height: 1 });
+  //     // Connect parent to dummy node (strongly)
+  //     dagreGraph.setEdge(parentId, dummyId, { minlen: 0, weight: 10 });
+  //     // Connect all siblings to dummy node (strongly)
+  //     siblingIds.forEach((siblingId: string) => {
+  //       dagreGraph.setEdge(dummyId, siblingId, { minlen: 0, weight: 10 });
+  //     });
+  //   }
+  // });
 
   // Add all edges to dagre, with weights to encourage parent-child proximity
   edgesToLayout.forEach((edge) => {
@@ -147,7 +157,7 @@ const getLayoutedElements = (
       (edge.source && !edge.source.startsWith('marriage-') && edge.target && !edge.target.startsWith('marriage-'))
     ) {
       // This is a marriage-to-child or single-parent-to-child edge
-      dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 3 });
+      dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 4 });
     } else {
       // Spouse-to-marriage or other edges
       dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 1 });
@@ -187,7 +197,7 @@ const FamilyTree: React.FC = () => {
     ): { initialNodes: FamilyTreeCustomNode[]; initialEdges: Edge[] } => {
       const initialNodes: FamilyTreeCustomNode[] = [];
       const initialEdges: Edge[] = [];
-      const marriages = new Map<string, { p1: string; p2: string; marriageNodeId: string }>();
+      const marriages = new Map<string, { p1: string; p2: string; marriageNodeId: string, color: string }>();
       const childToParentsMap = new Map<string, string[]>();
 
       persons.forEach((person) => {
@@ -215,30 +225,34 @@ const FamilyTree: React.FC = () => {
 
           if (!marriages.has(sortedSpouseIds)) {
             const marriageNodeId = `marriage-${sortedSpouseIds}`;
+            const marriageColor = getRandomColor(); // Generate a unique color for the marriage
+            
             initialNodes.push({
               id: marriageNodeId,
               type: 'marriage',
-              data: { label: 'Marriage' } as FamilyTreeNodeData,
+              data: { label: 'Marriage', color: marriageColor } as FamilyTreeNodeData,
               position: { x: 0, y: 0 },
             });
-            marriages.set(sortedSpouseIds, { p1: person1_id, p2: person2_id, marriageNodeId });
+            marriages.set(sortedSpouseIds, { p1: person1_id, p2: person2_id, marriageNodeId, color: marriageColor });
 
             initialEdges.push({
               id: `edge-${person1_id}-${marriageNodeId}`,
               source: person1_id,
               target: marriageNodeId,
-              sourceHandle: 'bottomOutput', 
+              sourceHandle: 'bottomOutput',
               targetHandle: 'spouseInputTop',
               type: 'smoothstep',
+              style: { stroke: marriageColor }, // Apply color to edge
             });
 
             initialEdges.push({
               id: `edge-${person2_id}-${marriageNodeId}`,
               source: person2_id,
               target: marriageNodeId,
-              sourceHandle: 'bottomOutput', 
+              sourceHandle: 'bottomOutput',
               targetHandle: 'spouseInputTop',
               type: 'smoothstep',
+              style: { stroke: marriageColor }, // Apply color to edge
             });
 
           }
@@ -278,6 +292,7 @@ const FamilyTree: React.FC = () => {
               sourceHandle: 'childOutput',
               targetHandle: 'parentInput',
               type: 'smoothstep',
+              style: { stroke: marriage.color }, // Apply color to edge
             });
           } else {
             console.warn(`Marriage node not found for parents of child ${childId}: ${parentIds.join(', ')}`);
@@ -293,7 +308,7 @@ const FamilyTree: React.FC = () => {
                 targetHandle: 'parentInput', // To CustomNode's (child) top
                 type: 'smoothstep',
             });
-             console.warn(`Child ${childId} has only one parent listed: ${parentId}. Creating direct parent-child link.`);
+            console.warn(`Child ${childId} has only one parent listed: ${parentId}. Creating direct parent-child link.`);
         } else if (parentIds.length > 2) {
             console.warn(`Child ${childId} has more than two parents listed: ${parentIds.join(', ')}. This is unusual.`);
         }
@@ -347,12 +362,35 @@ const FamilyTree: React.FC = () => {
     [setEdges]
   );
 
-  if (isLoading) return <div style={{ padding: '20px' }}>Loading family tree data...</div>;
-  if (error) return <div style={{ padding: '20px', color: 'red' }}>Error loading family tree: {error}</div>;
-  if (nodes.length === 0 && !isLoading) return <div style={{ padding: '20px' }}>No family data found or processed.</div>;
+  if (isLoading) return (
+    <div className="p-8 flex items-center justify-center h-screen bg-[#f8f7f4]">
+      <div className="text-stone-600 flex flex-col items-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-stone-600 mb-4"></div>
+        <div>Loading family tree data...</div>
+      </div>
+    </div>
+  );
+  
+  if (error) return (
+    <div className="p-8 flex items-center justify-center h-screen bg-[#f8f7f4]">
+      <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm max-w-xl">
+        <p className="font-medium">Error loading family tree:</p>
+        <p className="mt-1">{error}</p>
+      </div>
+    </div>
+  );
+  
+  if (nodes.length === 0 && !isLoading) return (
+    <div className="p-8 flex items-center justify-center h-screen bg-[#f8f7f4]">
+      <div className="bg-stone-100 border-l-4 border-stone-500 text-stone-700 p-4 rounded shadow-sm max-w-xl">
+        <p className="font-medium">No family data found</p>
+        <p className="mt-1">No family data has been processed or is available.</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div style={{ width: '100%', height: '100vh'}}>
+    <div className="w-full h-screen bg-[#f8f7f4] text-stone-900"> 
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
@@ -362,12 +400,21 @@ const FamilyTree: React.FC = () => {
           onConnect={onConnect}
           nodeTypes={nodeTypes}
           fitView
-          fitViewOptions={{ padding: 0.1 }}
+          fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
           connectionLineType={ConnectionLineType.SmoothStep}
+          minZoom={0.1}
+          maxZoom={2}
+          defaultEdgeOptions={{
+            style: {
+              strokeWidth: 2,
+            },
+            type: 'smoothstep',
+          }}
         >
-          <Controls />
-          <Background />
+          <Controls className="bg-stone-100 border border-stone-200 shadow-md m-4" />
+          {/* Use a cream color for the React Flow background */}
+          <Background color="#a8a29e" gap={16} bgColor="#e7e5e4" size={1} />
         </ReactFlow>
       </ReactFlowProvider>
     </div>
