@@ -13,12 +13,12 @@ async function isAuthenticated(request: NextRequest) {
 // Edit a person
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   if (!(await isAuthenticated(request))) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
-  const id = params.id;
+  const { id } = await params;
   const data = await request.json();
   try {
     await sql`
@@ -42,12 +42,12 @@ export async function PUT(
 // Delete a person and all their relationships
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }>}
 ) {
   if (!(await isAuthenticated(request))) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
-  const id = params.id;
+  const { id } = await params;
   try {
     await sql`DELETE FROM relationships WHERE person1_id = ${id} OR person2_id = ${id}`;
     await sql`DELETE FROM persons WHERE id = ${id}`;
