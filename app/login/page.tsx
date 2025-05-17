@@ -130,13 +130,11 @@ function LoginForm() {
 // Loading fallback component for the Suspense boundary
 function LoginFormFallback() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-stone-900">
-      <div className="w-full max-w-md p-6 bg-stone-800 rounded-lg shadow-xl border border-stone-700">
+    <div className="flex flex-col items-center justify-center p-4 bg-stone-900">
         <h1 className="text-2xl font-bold mb-6 text-center text-stone-100">Kutumba</h1>
         <div className="flex justify-center">
           <div className="animate-pulse text-stone-300">Loading...</div>
         </div>
-      </div>
     </div>
   );
 }

@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS persons (
   name TEXT NOT NULL,
   nickname TEXT,
   birthday DATE,
-  gender TEXT CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
+  gender TEXT CHECK (gender IN ('male', 'female')),
   date_of_death DATE,
   location TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS relationships (
   person2_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
   relationship_type TEXT NOT NULL CHECK (relationship_type IN ('parent', 'spouse')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (person_id, related_person_id, relationship_type)
+  UNIQUE (person_id, person2_id, relationship_type)
 );
 
 -- Version history table

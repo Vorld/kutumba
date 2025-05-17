@@ -8,20 +8,20 @@
 export interface Person {
   id: string;           // UUID
   name: string;         // Full name
-  nickname?: string;    // Optional nickname
-  birthday?: string;    // Date in ISO format (YYYY-MM-DD)
-  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
-  date_of_death?: string; // Date in ISO format (YYYY-MM-DD)
-  location?: string;    // Current or last known location
+  nickname?: string | null;    // Optional nickname
+  birthday?: string | null;    // Date in ISO format (YYYY-MM-DD)
+  gender?: 'male' | 'female' | null;
+  date_of_death?: string | null; // Date in ISO format (YYYY-MM-DD)
+  location?: string | null;    // Current or last known location
   created_at: string;   // Timestamp
   updated_at: string;   // Timestamp
   
   // Family relationships
-  parent_ids?: string[];  // List of parent IDs
-  spouse_id?: string;     // ID of the spouse
+  parent_ids?: string[] | null;  // List of parent IDs
+  spouse_id?: string | null;     // ID of the spouse
   
   // Admin fields
-  flagged_for_deletion?: boolean; // Whether this person is flagged for deletion
+  flagged_for_deletion?: boolean | null; // Whether this person is flagged for deletion
 }
 
 /**

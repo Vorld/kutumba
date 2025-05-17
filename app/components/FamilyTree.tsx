@@ -18,17 +18,20 @@ import dagre from 'dagre';
 
 import CustomNode from './CustomNode';
 import MarriageNode from './MarriageNode';
+import AddPersonModal from './AddPersonModal';
+import EditPersonModal from './EditPersonModal';
 import { Person } from '../../types';
 import { FamilyTreeCustomNode, FamilyTreeNodeData } from '../../lib/utils';
 
 import '@xyflow/react/dist/style.css';
 
-// Helper function to generate a random hex color
+// Helper function to generate a random dark hex color
 const getRandomColor = () => {
-  const letters = '0123456789ABCDEF';
+  // Use only lower half of hex digits for each channel to ensure darkness
+  const letters = '0123456789ABC';
   let color = '#';
   for (let i = 0; i < 6; i++) {
-    color += letters[Math.floor(Math.random() * 16)];
+    color += letters[Math.floor(Math.random() * letters.length)];
   }
   return color;
 };
@@ -99,56 +102,7 @@ const getLayoutedElements = (
       }
     }
   });
-
-  // --- Sibling adjacency for leaf nodes (no children, no spouses) ---
-  // Find all nodes that are not marriage nodes, have no children, and have no spouse edges
-  // const nodeIdToNode = Object.fromEntries(nodesToLayout.map(n => [n.id, n]));
-  // // Find all parent-child edges
-  // const parentChildEdges = edgesToLayout.filter(e =>
-  //   (e.source.startsWith('marriage-') || nodeIdToNode[e.source]?.type === 'custom') &&
-  //   nodeIdToNode[e.target]?.type === 'custom' &&
-  //   e.source !== e.target
-  // );
-  // // Build a map from parent to children
-  // const parentToChildren: Record<string, string[]> = {};
-  // parentChildEdges.forEach(e => {
-  //   if (!parentToChildren[e.source]) parentToChildren[e.source] = [];
-  //   parentToChildren[e.source].push(e.target);
-  // });
-  // // Find all nodes that are not marriage nodes, have no children, and have no spouse edges
-  // const leafNodes = nodesToLayout.filter(node => {
-  //   if (node.type !== 'custom') return false;
-  //   // No outgoing parent-child edge
-  //   const hasChildren = parentChildEdges.some(e => e.source === node.id);
-  //   // No spouse edge
-  //   const hasSpouse = edgesToLayout.some(e => e.source === node.id && nodeIdToNode[e.target]?.type === 'marriage');
-  //   return !hasChildren && !hasSpouse;
-  // });
-  // // Group leaf nodes by parent
-  // const parentToLeafSiblings: Record<string, string[]> = {};
-  // leafNodes.forEach(node => {
-  //   // Find parents (edges where this node is the target)
-  //   const parentEdges = parentChildEdges.filter(e => e.target === node.id);
-  //   parentEdges.forEach(e => {
-  //     if (!parentToLeafSiblings[e.source]) parentToLeafSiblings[e.source] = [];
-  //     parentToLeafSiblings[e.source].push(node.id);
-  //   });
-  // });
-  // // For each group of leaf siblings, add a dummy node, connect parent to dummy, and all siblings to dummy
-  // let siblingDummyIdx = 0;
-  // Object.entries(parentToLeafSiblings).forEach(([parentId, siblingIds]) => {
-  //   if (siblingIds.length > 1) {
-  //     const dummyId = `dummy-siblings-${siblingDummyIdx++}`;
-  //     dagreGraph.setNode(dummyId, { width: 1, height: 1 });
-  //     // Connect parent to dummy node (strongly)
-  //     dagreGraph.setEdge(parentId, dummyId, { minlen: 0, weight: 10 });
-  //     // Connect all siblings to dummy node (strongly)
-  //     siblingIds.forEach((siblingId: string) => {
-  //       dagreGraph.setEdge(dummyId, siblingId, { minlen: 0, weight: 10 });
-  //     });
-  //   }
-  // });
-
+  
   // Add all edges to dagre, with weights to encourage parent-child proximity
   edgesToLayout.forEach((edge) => {
     // Encourage parent-child edges to be straight and short
@@ -157,7 +111,7 @@ const getLayoutedElements = (
       (edge.source && !edge.source.startsWith('marriage-') && edge.target && !edge.target.startsWith('marriage-'))
     ) {
       // This is a marriage-to-child or single-parent-to-child edge
-      dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 4 });
+      dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 5 });
     } else {
       // Spouse-to-marriage or other edges
       dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 1 });
@@ -189,6 +143,13 @@ const FamilyTree: React.FC = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'edit'|'add'|null>(null);
+  const [selectedPerson, setSelectedPerson] = useState<Person|null>(null);
+  const [formData, setFormData] = useState<Partial<Person>>({});
+  const [allPersons, setAllPersons] = useState<Person[]>([]);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [allRelationships, setAllRelationships] = useState<ApiRelationship[]>([]);
 
   const processFamilyData = useCallback(
     (
@@ -242,7 +203,10 @@ const FamilyTree: React.FC = () => {
               sourceHandle: 'bottomOutput',
               targetHandle: 'spouseInputTop',
               type: 'smoothstep',
-              style: { stroke: marriageColor }, // Apply color to edge
+              style: { 
+                stroke: marriageColor,             
+                strokeWidth: 5, // Increased from 2 to 3
+              }, // Apply color to edge
             });
 
             initialEdges.push({
@@ -252,7 +216,10 @@ const FamilyTree: React.FC = () => {
               sourceHandle: 'bottomOutput',
               targetHandle: 'spouseInputTop',
               type: 'smoothstep',
-              style: { stroke: marriageColor }, // Apply color to edge
+              style: { 
+                stroke: marriageColor,
+                strokeWidth: 5,
+               }, // Apply color to edge
             });
 
           }
@@ -292,7 +259,10 @@ const FamilyTree: React.FC = () => {
               sourceHandle: 'childOutput',
               targetHandle: 'parentInput',
               type: 'smoothstep',
-              style: { stroke: marriage.color }, // Apply color to edge
+              style: { 
+                stroke: marriage.color,
+                strokeWidth: 5,
+               }, // Apply color to edge
             });
           } else {
             console.warn(`Marriage node not found for parents of child ${childId}: ${parentIds.join(', ')}`);
@@ -307,6 +277,9 @@ const FamilyTree: React.FC = () => {
                 sourceHandle: 'bottomOutput', // From CustomNode's (parent) bottom
                 targetHandle: 'parentInput', // To CustomNode's (child) top
                 type: 'smoothstep',
+                style: {
+                  strokeWidth: 5,
+                }
             });
             console.warn(`Child ${childId} has only one parent listed: ${parentId}. Creating direct parent-child link.`);
         } else if (parentIds.length > 2) {
@@ -362,10 +335,176 @@ const FamilyTree: React.FC = () => {
     [setEdges]
   );
 
+  // Fetch all persons and relationships for modals
+  useEffect(() => {
+    fetch('/api/persons').then(r=>r.json()).then(setAllPersons).catch(()=>{});
+    fetch('/api/relationships/all').then(r=>r.json()).then(setAllRelationships).catch(()=>{});
+  }, [modalOpen]);
+
+  // Relationship CRUD handlers for EditPersonModal
+  const handleAddRelationship = async (relationship: Omit<ApiRelationship, 'id'>) => {
+    // Add the requested relationship
+    await fetch('/api/relationships/all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(relationship),
+    });
+
+    // If adding a parent/child relationship, check for spouse and add for spouse too
+    if (relationship.relationship_type === 'parent' || relationship.relationship_type === 'child') {
+      // Determine who is the parent and who is the child
+      let parentId: string, childId: string;
+      if (relationship.relationship_type === 'parent') {
+        parentId = relationship.person1_id;
+        childId = relationship.person2_id;
+      } else {
+        parentId = relationship.person2_id;
+        childId = relationship.person1_id;
+      }
+      // Find spouse of parent
+      const spouseRel = allRelationships.find(
+        r =>
+          ((r.person1_id === parentId && r.relationship_type === 'spouse') ||
+           (r.person2_id === parentId && r.relationship_type === 'spouse'))
+      );
+      let spouseId = undefined;
+      if (spouseRel) {
+        spouseId = spouseRel.person1_id === parentId ? spouseRel.person2_id : spouseRel.person1_id;
+      }
+      // Only add if spouse exists and is not already a parent of this child
+      if (spouseId && spouseId !== parentId) {
+        const alreadyExists = allRelationships.some(r =>
+          ((r.person1_id === spouseId && r.person2_id === childId && r.relationship_type === 'parent') ||
+           (r.person2_id === spouseId && r.person1_id === childId && r.relationship_type === 'child'))
+        );
+        if (!alreadyExists) {
+          // Add the relationship for the spouse
+          await fetch('/api/relationships/all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              person1_id: relationship.relationship_type === 'parent' ? spouseId : childId,
+              person2_id: relationship.relationship_type === 'parent' ? childId : spouseId,
+              relationship_type: relationship.relationship_type,
+            }),
+          });
+        }
+      }
+    }
+    // Refresh relationships
+    const rels = await fetch('/api/relationships/all').then(r=>r.json());
+    setAllRelationships(rels);
+  };
+
+  const handleUpdateRelationship = async (id: string, updates: Partial<ApiRelationship>) => {
+    await fetch(`/api/relationships/all?id=${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    const rels = await fetch('/api/relationships/all').then(r=>r.json());
+    setAllRelationships(rels);
+  };
+  const handleDeleteRelationship = async (id: string) => {
+    await fetch(`/api/relationships/all?id=${id}`, { method: 'DELETE' });
+    const rels = await fetch('/api/relationships/all').then(r=>r.json());
+    setAllRelationships(rels);
+  };
+
+  // Node click handler
+  const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
+    if (node.type === 'custom') {
+      const person = allPersons.find(p => p.id === node.id);
+      setSelectedPerson(person || null);
+      setFormData(person || {});
+      setModalMode('edit');
+      setModalOpen(true);
+    }
+  }, [allPersons]);
+
+  // Add Person button handler
+  const openAddModal = () => setAddModalOpen(true);
+
+  // Add handler for add person
+  const handleAddPerson = async (personData: Partial<Person>, relationshipType: string, relatedPersonId: string | null) => {
+    // Map relationshipType to backend API types
+    let apiRelationshipType = 'A';
+    let relatedIds: string[] = [];
+    if (relationshipType === 'spouse') {
+      apiRelationshipType = 'B';
+      if (relatedPersonId) relatedIds = [relatedPersonId];
+    } else if (relationshipType === 'child') {
+      apiRelationshipType = 'C';
+      if (relatedPersonId) relatedIds = [relatedPersonId, '']; // UI only supports one parent selection
+    } else if (relationshipType === 'parent') {
+      apiRelationshipType = 'D';
+      if (relatedPersonId) relatedIds = [relatedPersonId];
+    }
+    const person = { ...personData, id: crypto.randomUUID() };
+    await fetch('/api/persons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person, relationshipType: apiRelationshipType, relatedIds }),
+    });
+    setAddModalOpen(false);
+    // Instead of reload, update allPersons and refresh nodes/edges
+    const persons = await fetch('/api/persons').then(r=>r.json());
+    setAllPersons(persons);
+    const apiRelationships = await fetch('/api/relationships/all').then(r=>r.json());
+    setAllRelationships(apiRelationships);
+    const { initialNodes, initialEdges } = processFamilyData(persons, apiRelationships);
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+  };
+
+  // Handle form changes
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(f => ({ ...f, [name]: value }));
+  };
+
+  // Submit edit
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPerson) return;
+    await fetch(`/api/persons/${selectedPerson.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    });
+    setModalOpen(false);
+    // Instead of reload, update allPersons and refresh nodes/edges
+    const persons = await fetch('/api/persons').then(r=>r.json());
+    setAllPersons(persons);
+    const apiRelationships = await fetch('/api/relationships/all').then(r=>r.json());
+    setAllRelationships(apiRelationships);
+    const { initialNodes, initialEdges } = processFamilyData(persons, apiRelationships);
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+  };
+
+  // Submit delete
+  const handleDelete = async () => {
+    if (!selectedPerson) return;
+    await fetch(`/api/persons/${selectedPerson.id}`, { method: 'DELETE' });
+    setModalOpen(false);
+    // Instead of reload, update allPersons and refresh nodes/edges
+    const persons = await fetch('/api/persons').then(r=>r.json());
+    setAllPersons(persons);
+    const apiRelationships = await fetch('/api/relationships/all').then(r=>r.json());
+    setAllRelationships(apiRelationships);
+    const { initialNodes, initialEdges } = processFamilyData(persons, apiRelationships);
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+  };
+
   if (isLoading) return (
-    <div className="p-8 flex items-center justify-center h-screen bg-[#f8f7f4]">
+    <div className="flex items-center justify-center w-full h-screen bg-[#f8f7f4]">
       <div className="text-stone-600 flex flex-col items-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-stone-600 mb-4"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-stone-200 border-t-4 border-t-stone-600 mb-4"></div>
         <div>Loading family tree data...</div>
       </div>
     </div>
@@ -391,6 +530,7 @@ const FamilyTree: React.FC = () => {
 
   return (
     <div className="w-full h-screen bg-[#f8f7f4] text-stone-900"> 
+      <button onClick={openAddModal} className="absolute top-4 right-4 z-50 bg-stone-700 text-white px-4 py-2 rounded shadow">Add Person</button>
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
@@ -407,16 +547,66 @@ const FamilyTree: React.FC = () => {
           maxZoom={2}
           defaultEdgeOptions={{
             style: {
-              strokeWidth: 2,
+              strokeWidth: 5, // Increased from 2 to 3
             },
             type: 'smoothstep',
           }}
+          onNodeClick={onNodeClick}
         >
           <Controls className="bg-stone-100 border border-stone-200 shadow-md m-4" />
           {/* Use a cream color for the React Flow background */}
           <Background color="#a8a29e" gap={16} bgColor="#e7e5e4" size={1} />
         </ReactFlow>
       </ReactFlowProvider>
+      {/* Use AddPersonModal for add person */}
+      <AddPersonModal
+        isOpen={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        onAddPerson={handleAddPerson}
+        existingPersons={allPersons}
+      />
+      {/* Use EditPersonModal for edit person */}
+      <EditPersonModal
+        isOpen={modalOpen && modalMode === 'edit'}
+        onClose={() => setModalOpen(false)}
+        onUpdatePerson={async (personData) => {
+          if (!selectedPerson) return;
+          await fetch(`/api/persons/${selectedPerson.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(personData),
+          });
+          setModalOpen(false);
+          // Instead of reload, update allPersons and refresh nodes/edges
+          const persons = await fetch('/api/persons').then(r=>r.json());
+          setAllPersons(persons);
+          const apiRelationships = await fetch('/api/relationships/all').then(r=>r.json());
+          setAllRelationships(apiRelationships);
+          const { initialNodes, initialEdges } = processFamilyData(persons, apiRelationships);
+          const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
+          setNodes(layoutedNodes);
+          setEdges(layoutedEdges);
+        }}
+        onDeletePerson={async (personId) => {
+          await fetch(`/api/persons/${personId}`, { method: 'DELETE' });
+          setModalOpen(false);
+          // Instead of reload, update allPersons and refresh nodes/edges
+          const persons = await fetch('/api/persons').then(r=>r.json());
+          setAllPersons(persons);
+          const apiRelationships = await fetch('/api/relationships/all').then(r=>r.json());
+          setAllRelationships(apiRelationships);
+          const { initialNodes, initialEdges } = processFamilyData(persons, apiRelationships);
+          const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
+          setNodes(layoutedNodes);
+          setEdges(layoutedEdges);
+        }}
+        person={selectedPerson}
+        allPersons={allPersons}
+        relationships={allRelationships.filter(r => r.person1_id === selectedPerson?.id || r.person2_id === selectedPerson?.id)}
+        onAddRelationship={handleAddRelationship}
+        onUpdateRelationship={handleUpdateRelationship}
+        onDeleteRelationship={handleDeleteRelationship}
+      />
     </div>
   );
 };
