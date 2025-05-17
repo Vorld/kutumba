@@ -4,6 +4,26 @@ import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react'; 
 import { FamilyTreeCustomNode } from '../../lib/utils'; 
 
+// Helper function to format dates in DD-MM-YYYY format
+const formatDate = (dateString: string | null | undefined): string => {
+  if (!dateString) return 'N/A';
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    
+    // Format as DD-MM-YYYY
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    
+    return `${day}-${month}-${year}`;
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Invalid Date';
+  }
+};
+
 const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnectable }) => {
   const { name, nickname, gender, birthday } = data;
   
@@ -40,7 +60,7 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
         justifyContent: 'center',
         overflow: 'hidden',
       }}
-      title={`Name: ${name}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${birthday ? new Date(birthday).toLocaleDateString() : 'N/A'}`}
+      title={`Name: ${name}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${formatDate(birthday)}`}
     >
       <Handle type="target" position={Position.Top} id="parentInput" isConnectable={isConnectable} style={{ top: '-5px' }} />
       {/* Single handle for all outgoing connections from the bottom */}
@@ -55,7 +75,7 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
       )}
       {birthday && (
         <div style={{ fontSize: '0.8em', opacity: 0.9, marginTop: '4px' }}>
-          Born: {new Date(birthday).toLocaleDateString()}
+          Born: {formatDate(birthday)}
         </div>
       )}
     </div>

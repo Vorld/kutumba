@@ -51,14 +51,6 @@ const AddPersonModal: React.FC<AddPersonModalProps> = ({
       setError('Full name is required.');
       return;
     }
-    if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
-      setError('Birthday must be in YYYY-MM-DD format.');
-      return;
-    }
-    if (dateOfDeath && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfDeath)) {
-      setError('Date of death must be in YYYY-MM-DD format.');
-      return;
-    }
     if (relationshipType !== 'none' && !relatedPersonId) {
       setError('Please select a person to establish the relationship.');
       return;
@@ -67,10 +59,10 @@ const AddPersonModal: React.FC<AddPersonModalProps> = ({
     const personData: Partial<Person> = {
       name: name.trim(),
       nickname: nickname && nickname.trim() ? nickname.trim() : null,
-      birthday: birthday && birthday !== '' ? birthday : null,
+      birthday: birthday || null,
       gender: gender === 'male' || gender === 'female' ? gender : null,
       location: location && location.trim() ? location.trim() : null,
-      date_of_death: dateOfDeath && dateOfDeath !== '' ? dateOfDeath : null,
+      date_of_death: dateOfDeath || null,
     };
 
     try {
@@ -134,7 +126,7 @@ const AddPersonModal: React.FC<AddPersonModalProps> = ({
           
           <div className="mb-4">
             <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="birthday">
-              Birthday (YYYY-MM-DD)
+              Birthday
             </label>
             <input
               type="date"
@@ -142,7 +134,6 @@ const AddPersonModal: React.FC<AddPersonModalProps> = ({
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
               value={birthday ?? ''}
               onChange={(e) => setBirthday(e.target.value === '' ? null : e.target.value)}
-              placeholder="e.g. 1990-05-17"
             />
           </div>
           
@@ -181,7 +172,7 @@ const AddPersonModal: React.FC<AddPersonModalProps> = ({
           
           <div className="mb-4">
             <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="dateOfDeath">
-              Date of Death (YYYY-MM-DD, optional)
+              Date of Death (optional)
             </label>
             <input
               type="date"
@@ -189,7 +180,6 @@ const AddPersonModal: React.FC<AddPersonModalProps> = ({
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
               value={dateOfDeath ?? ''}
               onChange={(e) => setDateOfDeath(e.target.value === '' ? null : e.target.value)}
-              placeholder="e.g. 2020-01-01"
             />
           </div>
           

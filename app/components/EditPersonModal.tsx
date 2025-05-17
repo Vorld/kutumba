@@ -44,15 +44,49 @@ const EditPersonModal: React.FC<EditPersonModalProps> = ({
   const [error, setError] = useState('');
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
+  // Helper function to ensure dates are in YYYY-MM-DD format
+  const formatDateForInput = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return '';
+    
+    try {
+      // Try to parse and format the date
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', dateStr);
+        return '';
+      }
+      
+      // Format as YYYY-MM-DD
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch (e) {
+      console.error('Error formatting date:', e);
+      return '';
+    }
+  };
+
   // Update form when person changes
   useEffect(() => {
     if (person) {
+      console.log('Person data:', person);
       setName(person.name || '');
       setNickname(person.nickname ?? null);
-      setBirthday(person.birthday ?? null);
+      
+      // Format birthday for date input
+      const formattedBirthday = formatDateForInput(person.birthday);
+      console.log('Formatted birthday:', formattedBirthday);
+      setBirthday(formattedBirthday || null);
+      
       setGender(person.gender ?? null);
       setLocation(person.location ?? null);
-      setDateOfDeath(person.date_of_death ?? null);
+      
+      // Format date of death for date input
+      const formattedDateOfDeath = formatDateForInput(person.date_of_death);
+      console.log('Formatted date of death:', formattedDateOfDeath);
+      setDateOfDeath(formattedDateOfDeath || null);
+      
       setError('');
       setShowDeleteConfirmation(false);
     }
@@ -64,14 +98,6 @@ const EditPersonModal: React.FC<EditPersonModalProps> = ({
 
     if (!name.trim()) {
       setError('Full name is required.');
-      return;
-    }
-    if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
-      setError('Birthday must be in YYYY-MM-DD format.');
-      return;
-    }
-    if (dateOfDeath && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfDeath)) {
-      setError('Date of death must be in YYYY-MM-DD format.');
       return;
     }
     if (!person) {
@@ -163,15 +189,17 @@ const EditPersonModal: React.FC<EditPersonModalProps> = ({
               </div>
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="birthday">
-                  Birthday (YYYY-MM-DD)
+                  Birthday
                 </label>
                 <input
                   type="date"
                   id="birthday"
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
-                  value={birthday ?? ''}
-                  onChange={(e) => setBirthday(e.target.value === '' ? null : e.target.value)}
-                  placeholder="e.g. 1990-05-17"
+                  value={birthday ? birthday : ''}
+                  onChange={(e) => {
+                    console.log('Birthday input changed to:', e.target.value);
+                    setBirthday(e.target.value || null);
+                  }}
                 />
               </div>
               <div className="mb-4">
@@ -207,15 +235,17 @@ const EditPersonModal: React.FC<EditPersonModalProps> = ({
               </div>
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="dateOfDeath">
-                  Date of Death (YYYY-MM-DD, optional)
+                  Date of Death (optional)
                 </label>
                 <input
                   type="date"
                   id="dateOfDeath"
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
-                  value={dateOfDeath ?? ''}
-                  onChange={(e) => setDateOfDeath(e.target.value === '' ? null : e.target.value)}
-                  placeholder="e.g. 2020-01-01"
+                  value={dateOfDeath ? dateOfDeath : ''}
+                  onChange={(e) => {
+                    console.log('Date of death input changed to:', e.target.value);
+                    setDateOfDeath(e.target.value || null);
+                  }}
                 />
               </div>
               <div className="flex items-center justify-between mt-6">

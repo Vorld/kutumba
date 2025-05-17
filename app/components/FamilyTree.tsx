@@ -530,7 +530,12 @@ const FamilyTree: React.FC = () => {
 
   return (
     <div className="w-full h-screen bg-[#f8f7f4] text-stone-900"> 
-      <button onClick={openAddModal} className="absolute top-4 right-4 z-50 bg-stone-700 text-white px-4 py-2 rounded shadow">Add Person</button>
+      <button 
+        onClick={openAddModal} 
+        className="fixed top-4 right-4 z-50 bg-stone-700 text-white px-4 py-2 rounded shadow-md md:absolute sm:text-sm sm:p-2 md:text-base md:px-4 md:py-2"
+      >
+        Add Person
+      </button>
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
