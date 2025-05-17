@@ -111,7 +111,7 @@ const getLayoutedElements = (
       (edge.source && !edge.source.startsWith('marriage-') && edge.target && !edge.target.startsWith('marriage-'))
     ) {
       // This is a marriage-to-child or single-parent-to-child edge
-      dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 5 });
+      dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 4 });
     } else {
       // Spouse-to-marriage or other edges
       dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 1 });
