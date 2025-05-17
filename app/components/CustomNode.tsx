@@ -10,11 +10,19 @@ const CustomNode: React.FC<NodeProps<FamilyTreeCustomNode>> = ({ data, isConnect
   return (
     <div 
       style={{
+        width: '180px',
+        height: '100px',
+        boxSizing: 'border-box',
         padding: '10px 20px',
         borderRadius: '8px',
         background: gender === 'male' ? '#lightblue' : gender === 'female' ? '#pink' : '#lightgray',
         border: '1px solid #555',
-        textAlign: 'center'
+        textAlign: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
       }}
       title={`Name: ${name}${nickname ? ` ('${nickname}')` : ''}\nGender: ${gender || 'N/A'}\nBirthday: ${birthday ? new Date(birthday).toLocaleDateString() : 'N/A'}`}
     >

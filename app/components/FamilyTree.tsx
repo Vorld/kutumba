@@ -51,6 +51,7 @@ const getLayoutedElements = (
   const isHorizontal = direction === 'LR';
   dagreGraph.setGraph({ rankdir: direction, nodesep: 70, ranksep: 70 });
 
+  // Add all nodes to dagre
   nodesToLayout.forEach((node) => {
     let width = customNodeWidth;
     let height = customNodeHeight;
@@ -61,8 +62,96 @@ const getLayoutedElements = (
     dagreGraph.setNode(node.id, { width, height });
   });
 
+  // --- Dummy node trick for spouse adjacency (if at least one spouse has no parents in the tree) ---
+  let dummyIdx = 0;
+  // Build a set of all child node ids (i.e., all nodes that are a child in a parent/child relationship)
+  const childNodeIds = new Set(
+    edgesToLayout
+      .filter(e => e.target && !e.target.startsWith('marriage-') && e.target !== e.source)
+      .map(e => e.target)
+  );
+  nodesToLayout.forEach((node) => {
+    if (node.type === 'marriage') {
+      const spouseEdges = edgesToLayout.filter(
+        (e) => e.target === node.id && e.source !== node.id
+      );
+      if (spouseEdges.length === 2) {
+        // Apply dummy node if EITHER spouse is not a child in the tree (i.e., has no parents in the tree)
+        const atLeastOneSpouseIsRoot = spouseEdges.some(edge => !childNodeIds.has(edge.source));
+        if (atLeastOneSpouseIsRoot) {
+          const dummyId = `dummy-marriage-${node.id}-${dummyIdx++}`;
+          dagreGraph.setNode(dummyId, { width: 1, height: 1 });
+          spouseEdges.forEach((edge) => {
+            dagreGraph.setEdge(edge.source, dummyId, { minlen: 1, weight: 4 });
+          });
+          dagreGraph.setEdge(dummyId, node.id, { minlen: 1, weight: 4 });
+        }
+      }
+    }
+  });
+
+  // --- Sibling adjacency for leaf nodes (no children, no spouses) ---
+  // Find all nodes that are not marriage nodes, have no children, and have no spouse edges
+  const nodeIdToNode = Object.fromEntries(nodesToLayout.map(n => [n.id, n]));
+  // Find all parent-child edges
+  const parentChildEdges = edgesToLayout.filter(e =>
+    (e.source.startsWith('marriage-') || nodeIdToNode[e.source]?.type === 'custom') &&
+    nodeIdToNode[e.target]?.type === 'custom' &&
+    e.source !== e.target
+  );
+  // Build a map from parent to children
+  const parentToChildren: Record<string, string[]> = {};
+  parentChildEdges.forEach(e => {
+    if (!parentToChildren[e.source]) parentToChildren[e.source] = [];
+    parentToChildren[e.source].push(e.target);
+  });
+  // Find all nodes that are not marriage nodes, have no children, and have no spouse edges
+  const leafNodes = nodesToLayout.filter(node => {
+    if (node.type !== 'custom') return false;
+    // No outgoing parent-child edge
+    const hasChildren = parentChildEdges.some(e => e.source === node.id);
+    // No spouse edge
+    const hasSpouse = edgesToLayout.some(e => e.source === node.id && nodeIdToNode[e.target]?.type === 'marriage');
+    return !hasChildren && !hasSpouse;
+  });
+  // Group leaf nodes by parent
+  const parentToLeafSiblings: Record<string, string[]> = {};
+  leafNodes.forEach(node => {
+    // Find parents (edges where this node is the target)
+    const parentEdges = parentChildEdges.filter(e => e.target === node.id);
+    parentEdges.forEach(e => {
+      if (!parentToLeafSiblings[e.source]) parentToLeafSiblings[e.source] = [];
+      parentToLeafSiblings[e.source].push(node.id);
+    });
+  });
+  // For each group of leaf siblings, add a dummy node, connect parent to dummy, and all siblings to dummy
+  let siblingDummyIdx = 0;
+  Object.entries(parentToLeafSiblings).forEach(([parentId, siblingIds]) => {
+    if (siblingIds.length > 1) {
+      const dummyId = `dummy-siblings-${siblingDummyIdx++}`;
+      dagreGraph.setNode(dummyId, { width: 1, height: 1 });
+      // Connect parent to dummy node (strongly)
+      dagreGraph.setEdge(parentId, dummyId, { minlen: 0, weight: 10 });
+      // Connect all siblings to dummy node (strongly)
+      siblingIds.forEach((siblingId: string) => {
+        dagreGraph.setEdge(dummyId, siblingId, { minlen: 0, weight: 10 });
+      });
+    }
+  });
+
+  // Add all edges to dagre, with weights to encourage parent-child proximity
   edgesToLayout.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
+    // Encourage parent-child edges to be straight and short
+    if (
+      (edge.source.startsWith('marriage-') && edge.target && !edge.target.startsWith('marriage-')) ||
+      (edge.source && !edge.source.startsWith('marriage-') && edge.target && !edge.target.startsWith('marriage-'))
+    ) {
+      // This is a marriage-to-child or single-parent-to-child edge
+      dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 3 });
+    } else {
+      // Spouse-to-marriage or other edges
+      dagreGraph.setEdge(edge.source, edge.target, { minlen: 1, weight: 1 });
+    }
   });
 
   dagre.layout(dagreGraph);
